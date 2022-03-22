@@ -1,4 +1,6 @@
 from setuptools import setup
+import os
+from glob import glob
 
 package_name = 'ucsd_robocar_control2_pkg'
 
@@ -10,6 +12,9 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
+        (os.path.join('share', package_name, 'config'), glob('config/*.yaml'))
+
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -20,6 +25,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'lqr_lateral_node = ucsd_robocar_control2_pkg.lqr_lateral_node:main',
+            'mpc_node = ucsd_robocar_control2_pkg.mpc_node:main',
+            'pid_node = ucsd_robocar_control2_pkg.pid_node:main'
         ],
     },
 )
