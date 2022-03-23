@@ -1,22 +1,34 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Int32, Int32MultiArray
-from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32, Float32MultiArray
+from geometry_msgs.msg import Twist, Pose
+from nav_msgs.msg import Path
 import time
 import os
 
 NODE_NAME = 'lqr_node'
-ERROR_TOPIC_NAME = '/centroid'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
 
+POSE_TOPIC_NAME = '/pose'
+PATH_TOPIC_NAME = '/path'
+ERROR_TOPIC_NAME = '/path_error'
 
 class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
         self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
-        self.pose_error_subscriber = self.create_subscription(Float32, ERROR_TOPIC_NAME, self.controller, 10)
+
+        # One or the other...
+        self.pose_subscriber = self.create_subscription(Pose, POSE_TOPIC_NAME, self.set_pose, 10)
+        self.pose_subscriber
+        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
+        self.path_subscriber
+        # OR
+        self.pose_error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.controller, 10)
         self.pose_error_subscriber
+        
+
 
         # Default actuator values
         self.declare_parameters(
@@ -48,6 +60,12 @@ class LqrController(Node):
             f'\nmax_left_steering: {self.max_left_steering}'
         )
 
+    def set_pose(self,data):
+        pass
+
+    def set_path(self,data):
+        pass
+
     def controller(self, data):
         """
         Need:
@@ -60,8 +78,13 @@ class LqrController(Node):
         theta_e: heading error
         theta_e_dot: heading error rate
         """
-        # setting up PID control
-        self.ek = data.data
+        # setting up LQR control
+
+        # OR
+        self.ecg = data.data[0]
+        self.ecg_dot = data.data[1]
+        self.theta_e = data.data[2]
+        self.theta_e_dot = data.data[3]
 
         # Throttle gain scheduling (function of error)
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
@@ -69,7 +92,9 @@ class LqrController(Node):
         throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
         # Steering LQR (TODO: add functions to calculate parameters below)
-        steering_float_raw = = self.K1 * ecg + self.K2 * ecg_dot + self.K3 * theta_e  + self.K4 * theta_e_dot
+        steering_float_raw = = self.K1 * self.ecg + self.K2 * self.ecg_dot + self.K3 * self.theta_e  + self.K4 * self.theta_e_dot
+        # OR
+
         steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
         # Publish values
