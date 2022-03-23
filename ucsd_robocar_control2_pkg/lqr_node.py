@@ -38,8 +38,6 @@ class LqrController(Node):
 
         # initializing control
         self.Ts = float(1/20)
-        self.ek = 0 # current error
-        self.ek_1 = 0 # previous error
         
         self.get_logger().info(
             f'\nerror_threshold: {self.error_threshold}'
@@ -51,6 +49,17 @@ class LqrController(Node):
         )
 
     def controller(self, data):
+        """
+        Need:
+        -pose data and path data to calculate errors 
+        OR
+        -previously calculated errors
+
+        ecg: cross-trackk error from center of gravity (cg)
+        ecg_dot: cross-trackk error rate from cg
+        theta_e: heading error
+        theta_e_dot: heading error rate
+        """
         # setting up PID control
         self.ek = data.data
 
@@ -59,8 +68,8 @@ class LqrController(Node):
         throttle_float_raw = ((self.min_throttle - self.max_throttle)  / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
         throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
-        # Steering LQR
-        steering_float_raw = todo
+        # Steering LQR (TODO: add functions to calculate parameters below)
+        steering_float_raw = = self.K1 * ecg + self.K2 * ecg_dot + self.K3 * theta_e  + self.K4 * theta_e_dot
         steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
         # Publish values
