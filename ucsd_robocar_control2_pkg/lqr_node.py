@@ -34,8 +34,6 @@ class LqrController(Node):
         # OR
         self.pose_error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.controller, 10)
         self.pose_error_subscriber
-        
-
 
         # Default actuator values
         self.declare_parameters(
