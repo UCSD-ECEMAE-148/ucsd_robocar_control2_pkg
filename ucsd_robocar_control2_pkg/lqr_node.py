@@ -3,6 +3,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Path
+from sensor_msgs.msg import IMU
 import time
 import os
 
@@ -12,12 +13,18 @@ ACTUATOR_TOPIC_NAME = '/cmd_vel'
 POSE_TOPIC_NAME = '/pose'
 PATH_TOPIC_NAME = '/path'
 ERROR_TOPIC_NAME = '/path_error'
+IMU_TOPIC_NAME = '/camera/imu'
 
 class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
         self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
+        
+        self.velocity_subscriber = self.create_subscription(IMU, IMU_TOPIC_NAME, self.update_vx, 10)
+        self.Ts = 100 # imu sample frequency (Hz)
+        self.vx = 0
+        self.vy = 0
 
         # One or the other...
         self.pose_subscriber = self.create_subscription(Pose, POSE_TOPIC_NAME, self.set_pose, 10)
@@ -51,6 +58,20 @@ class LqrController(Node):
         # initializing control
         self.Ts = float(1/20)
         
+        # gain function coefficients
+        self.a1 = 0
+        self.a2 = 0
+        self.a3 = 0
+        self.a4 = 0
+        self.b1 = 0
+        self.b2 = 0
+        self.b3 = 0
+        self.b4 = 0
+        self.c1 = 0
+        self.c2 = 0
+        self.c3 = 0
+        self.c4 = 0 
+        
         self.get_logger().info(
             f'\nerror_threshold: {self.error_threshold}'
             f'\nzero_throttle: {self.zero_throttle}'
@@ -60,13 +81,43 @@ class LqrController(Node):
             f'\nmax_left_steering: {self.max_left_steering}'
         )
 
-    def set_pose(self,data):
+    def update_vx(self, imu_data):
+        self.vx = data.
+        quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
+        euler = tf.transformations.euler_from_quaternion(quaternion)
+        
+        # orientation
+        roll = euler[0]
+        pitch = euler[1]
+        yaw = euler[2]
+
+        # angular velocity
+        roll_rate = imu_data.angular_velocity.x
+        pitch_rate = imu_data.angular_velocity.y
+        yaw_rate = imu_data.angular_velocity.z
+
+        # linear acceleration
+        ax = imu_data.linear_acceleration.x
+        ay = imu_data.linear_acceleration.y
+        az = imu_data.linear_acceleration.z
+
+        # linear velocity
+        self.vx = self.vx + (ax * self.Ts) 
+        self.vy = self.vy + (ay * self.Ts)
+
+    def set_pose(self, pose_data):
         pass
 
-    def set_path(self,data):
+    def set_path(self, path_data):
         pass
 
-    def controller(self, data):
+    def update_gains(self)
+        self.K1 = self.a1 * self.vx**self.b1 + self.c1
+        self.K2 = self.a2 * self.vx**self.b2 + self.c2
+        self.K3 = self.a3 * self.vx**self.b3 + self.c3
+        self.K4 = self.a4 * self.vx**self.b4 + self.c4
+
+    def controller(self, error_data):
         """
         Need:
         -pose data and path data to calculate errors 
@@ -78,13 +129,16 @@ class LqrController(Node):
         theta_e: heading error
         theta_e_dot: heading error rate
         """
+        # get updated gains
+        self.update_gains()
+
         # setting up LQR control
 
         # OR
-        self.ecg = data.data[0]
-        self.ecg_dot = data.data[1]
-        self.theta_e = data.data[2]
-        self.theta_e_dot = data.data[3]
+        self.ecg = error_data.data[0]
+        self.ecg_dot = error_data.data[1] # ecg_dot = vy + vx * sin(theta_error);
+        self.theta_e = error_data.data[2] # theta_e = path_angle - car_yaw_angle
+        self.theta_e_dot = error_data.data[3] # theta_e_dot = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
 
         # Throttle gain scheduling (function of error)
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
