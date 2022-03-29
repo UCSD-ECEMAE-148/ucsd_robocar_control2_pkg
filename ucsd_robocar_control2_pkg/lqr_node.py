@@ -21,7 +21,7 @@ class LqrController(Node):
         self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
         
-        self.velocity_subscriber = self.create_subscription(IMU, IMU_TOPIC_NAME, self.update_vx, 10)
+        self.velocity_subscriber = self.create_subscription(IMU, IMU_TOPIC_NAME, self.update_velocity, 10)
         self.Ts = 100 # imu sample frequency (Hz)
         self.vx = 0
         self.vy = 0
@@ -39,6 +39,14 @@ class LqrController(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
+                ('k1_gain': 1.0,
+                ('k2_gain': 1.0,
+                ('k3_gain': 1.0,
+                ('k4_gain': 1.0,
+                ('k1_coeff': [1.0, 1.0, 1.0],
+                ('k2_coeff': [1.0, 1.0, 1.0],
+                ('k3_coeff': [1.0, 1.0, 1.0],
+                ('k4_coeff': [1.0, 1.0, 1.0],
                 ('error_threshold', 0.15),
                 ('zero_throttle',0.0),
                 ('max_throttle', 0.2),
@@ -46,6 +54,14 @@ class LqrController(Node):
                 ('max_right_steering', 1.0),
                 ('max_left_steering', -1.0)
             ])
+        self.k1_gain = self.get_parameter('k1_gain').value
+        self.k2_gain = self.get_parameter('k2_gain').value
+        self.k3_gain = self.get_parameter('k3_gain').value
+        self.k4_gain = self.get_parameter('k4_gain').value
+        self.k1_coeff = self.get_parameter('k1_coeff').value
+        self.k2_coeff = self.get_parameter('k2_coeff').value
+        self.k3_coeff = self.get_parameter('k3_coeff').value
+        self.k4_coeff = self.get_parameter('k4_coeff').value
         self.error_threshold = self.get_parameter('error_threshold').value # between [0,1]
         self.zero_throttle = self.get_parameter('zero_throttle').value # between [-1,1] but should be around 0
         self.max_throttle = self.get_parameter('max_throttle').value # between [-1,1]
@@ -56,21 +72,15 @@ class LqrController(Node):
         # initializing control
         self.Ts = float(1/20)
         
-        # gain function coefficients
-        self.a1 = 0
-        self.a2 = 0
-        self.a3 = 0
-        self.a4 = 0
-        self.b1 = 0
-        self.b2 = 0
-        self.b3 = 0
-        self.b4 = 0
-        self.c1 = 0
-        self.c2 = 0
-        self.c3 = 0
-        self.c4 = 0 
-        
         self.get_logger().info(
+            f'\nk1_gain: {self.k1_gain}'
+            f'\nk2_gain: {self.k2_gain}'
+            f'\nk3_gain: {self.k3_gain}'
+            f'\nk4_gain: {self.k4_gain}'
+            f'\nk1_coeff: {self.k1_coeff}'
+            f'\nk2_coeff: {self.k2_coeff}'
+            f'\nk3_coeff: {self.k3_coeff}'
+            f'\nk4_coeff: {self.k4_coeff}'
             f'\nerror_threshold: {self.error_threshold}'
             f'\nzero_throttle: {self.zero_throttle}'
             f'\nmax_throttle: {self.max_throttle}'
@@ -79,8 +89,7 @@ class LqrController(Node):
             f'\nmax_left_steering: {self.max_left_steering}'
         )
 
-    def update_vx(self, imu_data):
-        self.vx = data.
+    def update_velocity(self, imu_data):
         quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
         euler = tf.transformations.euler_from_quaternion(quaternion)
         
@@ -109,11 +118,26 @@ class LqrController(Node):
     def set_path(self, path_data):
         pass
 
-    def update_gains(self)
-        self.K1 = self.a1 * self.vx**self.b1 + self.c1
-        self.K2 = self.a2 * self.vx**self.b2 + self.c2
-        self.K3 = self.a3 * self.vx**self.b3 + self.c3
-        self.K4 = self.a4 * self.vx**self.b4 + self.c4
+    def calc_gain_power_function(self, coeff, vx):
+        a = coeff[0]
+        b = coeff[1]
+        c = coeff[2]
+        K = a * vx**b + c
+        return K
+
+    def update_gains(self):
+        K_mat = []
+        # put all coeff for each gain function into matrix with dim: 4x3
+        coeff_mat = [self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff] 
+
+        for coeff in coeff_mat
+            K = self.calc_gain_power_function(coeff, vx)
+            K_mat.append(K)
+        
+        self.K1 = K_mat[0]
+        self.K2 = K_mat[1]
+        self.K3 = K_mat[2]
+        self.K4 = K_mat[3]
 
     def controller(self, error_data):
         """
@@ -131,8 +155,6 @@ class LqrController(Node):
         self.update_gains()
 
         # setting up LQR control
-
-        # OR
         self.ecg = error_data.data[0]
         self.ecg_dot = error_data.data[1] # ecg_dot = vy + vx * sin(theta_error);
         self.theta_e = error_data.data[2] # theta_e = path_angle - car_yaw_angle

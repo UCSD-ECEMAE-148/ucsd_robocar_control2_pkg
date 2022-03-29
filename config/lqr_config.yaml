@@ -1,0 +1,16 @@
+lqr_node: 
+  ros__parameters:
+    k1_gain: 1.0
+    k2_gain: 1.0
+    k3_gain: 1.0
+    k4_gain: 1.0
+    k1_coeff: [1.0, 1.0, 1.0]
+    k2_coeff: [1.0, 1.0, 1.0]
+    k3_coeff: [1.0, 1.0, 1.0]
+    k4_coeff: [1.0, 1.0, 1.0]
+    zero_throttle  : -0.032
+    max_throttle : 0.382 
+    min_throttle : 0.363 
+    error_threshold : 0.16 
+    max_right_steering : 0.792 
+    max_left_steering : -0.831
