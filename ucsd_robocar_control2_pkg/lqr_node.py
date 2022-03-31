@@ -4,6 +4,7 @@ from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Path
 from sensor_msgs.msg import IMU
+from .controller_submodule.lqr_calculator import VESC_
 import time
 import os
 
@@ -118,22 +119,20 @@ class LqrController(Node):
     def set_path(self, path_data):
         pass
 
-    def calc_gain_power_function(self, coeff, vx):
+    def calc_gain_power_function(self, coeff):
         a = coeff[0]
         b = coeff[1]
         c = coeff[2]
-        K = a * vx**b + c
+        K = a * self.vx**b + c
         return K
 
     def update_gains(self):
         K_mat = []
         # put all coeff for each gain function into matrix with dim: 4x3
         coeff_mat = [self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff] 
-
         for coeff in coeff_mat
-            K = self.calc_gain_power_function(coeff, vx)
+            K = self.calc_gain_power_function(coeff)
             K_mat.append(K)
-        
         self.K1 = K_mat[0]
         self.K2 = K_mat[1]
         self.K3 = K_mat[2]

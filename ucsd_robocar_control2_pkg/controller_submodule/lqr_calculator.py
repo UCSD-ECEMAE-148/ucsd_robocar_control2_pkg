@@ -3,10 +3,11 @@ from control.matlab import *  # MATLAB-like functions
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
+import yaml
 
 
 class LQRDesign:
-    def __init__(self):
+    def __init__(self, car_parameter_input_path):
         self.Ts = 0.01
         self.m = 630  # FIXME total mass (kg)
         self.mf = self.m * 0.42  # FIXME mass on front axel
@@ -18,8 +19,18 @@ class LQRDesign:
         self.Lr = self.L * (1 - self.mr / self.m)  # distance from CG to rear axel
         self.Iz = self.Lf * self.Lr * (self.mf + self.mr)  # moment of inertia
         self.sysd = 0
+        self.car_parameter_input_path = car_parameter_input_path
+        self.update_parameters()
+    
+    def update_parameters(self):
+        with open(self.car_parameter_input_path, "r") as car_parameter_file:
+            car_inputs = yaml.load(car_parameter_file, Loader=yaml.FullLoader)
+            self.car_parameter_input_dictionary = eval(car_inputs)
+            for key in self.car_parameter_input_dictionary:
+                value = self.car_parameter_input_dictionary[key]
+                setattr(self, key, value)
 
-    def build_system(self, Vx):
+    def build_model(self, Vx):
         a11 = 0
         a12 = 1
         a13 = 0
@@ -71,8 +82,12 @@ class LQRDesign:
         sys = ss(A, B, C, D)
         self.sysd = c2d(sys, self.Ts, method='zoh')
 
-    def compute_lqr_constant_speed(self):
+    def compute_q(self):
         Q = np.diag([2.0, 0.149999998734902, 1, 1]) # FIXME: update to vary as function of Vx
+        return Q
+
+    def compute_lqr_constant_speed(self):
+        Q = self.compute_q()
         R = np.diag([0.001])
         K, S, E = lqr(self.sysd, Q * self.Ts, R / self.Ts)
         return K
@@ -80,7 +95,7 @@ class LQRDesign:
     def compute_lqr_varying_speed(self, vx_vec):
         k_mat = np.empty((0,4))
         for vx in vx_vec:
-            self.build_system(vx)
+            self.build_model(vx)
             k = self.compute_lqr_constant_speed()
             k_mat = np.append(k_mat, k, axis=0)
         return k_mat
