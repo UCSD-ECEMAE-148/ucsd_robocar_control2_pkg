@@ -4,7 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 import yaml
-from .controller_submodule.car_model import *
+from .controller_submodule.car_model import CarModel
 
 
 class LQRDesign:
@@ -18,14 +18,13 @@ class LQRDesign:
     def build_system(self, Vx):
         self.sysd = self.lqr_car.build_error_model(Vx)
 
-    def compute_q(self):
-        Q = np.diag([2.0, 0.149999998734902, 1, 1]) # FIXME: update to vary as function of Vx
-        return Q
+    def compute_weights(self):
+        self.Q = np.diag([2.0, 0.15, 1, 1]) # FIXME: update to vary as function of Vx
+        self.R = np.diag([0.001])
 
     def compute_lqr_constant_speed(self):
-        Q = self.compute_q()
-        R = np.diag([0.001])
-        K, S, E = lqr(self.sysd, Q * self.Ts, R / self.Ts)
+        self.compute_weights()
+        K, S, E = lqr(self.sysd, self.Q * self.Ts, self.R / self.Ts)
         return K
 
     def compute_lqr_varying_speed(self, vx_vec):

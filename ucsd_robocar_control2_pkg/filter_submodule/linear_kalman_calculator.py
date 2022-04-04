@@ -1,20 +1,24 @@
 from control import *
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
-from matplotlib import pyplot as plt
-from scipy.optimize import curve_fit
-import yaml
+from .controller_submodule.car_model import CarModel
 
-class LinearKalmanFilter(self)
+
+class LinearKalmanFilter:
     def __init__(self):
         self.sample_size = []  # length of input vector
-        self.Pp = []  # error covariance 
+        self.Pp = []  # error covariance
         self.P_mat = []  # storage for Pp over time
         self.K_mat = []  # K gain matrix
         self.xhat = []  # optimal state estimate
         self.yhat = []  # optimal output estimate
         self.xhat_mat = []  # storage for xhat over time
         self.yhat_mat = []  # storage for yhat over time
+        self.lqr_car = CarModel()
+        self.sysd = 0
+
+    def build_system(self, Vx):
+        self.sysd = self.lqr_car.build_error_model(Vx)
 
     def lkf(self, A, B, C, D, x0, u, y, P0, Qo, Ro):
         A = np.array(A)
@@ -46,7 +50,8 @@ class LinearKalmanFilter(self)
                 self.xhat_mat[:, k] = self.xhat.transpose()  # store the estimates
 
                 # Time update
-                self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1), np.dot(B, u[k]))  # predicted state estimate
+                self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1),
+                                   np.dot(B, u[k]))  # predicted state estimate
                 self.Pp = np.add(np.dot(np.dot(A, self.Pp), A_t), Qo)  # covariance
 
                 # # Measurement update
@@ -88,12 +93,25 @@ class LinearKalmanFilter(self)
                     print(f"K: {K}")
                     print(f"y: {self.yhat}")
                     print(f"y_mat: {self.yhat_mat}")
+            
 
-    
+
 def main():
-    pass
+    my_kalman = LinearKalmanFilter()
+    my_kalman.build_system(5)
+    [A, B, C, D] = ssdata(my_kalman.sysd)
+    x0 = [1, 1, 1, 1]
+    u = [1, 1, 1, 1]
+    y = np.array([[1, 1, 1, 1],
+                  [1, 1, 1, 1],
+                  [1, 1, 1, 1],
+                  [1, 1, 1, 1]])
+    P0 = np.diag([1, 1, 1, 1])
+    Qo = np.diag([1, 1, 1, 1])
+    Ro = [0.1]
+    my_kalman.debug = True
+    my_kalman.lkf(A, B, C, D, x0, u, y, P0, Qo, Ro)
 
 
 if __name__ == '__main__':
     main()
-    
