@@ -4,7 +4,7 @@ from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose
 from nav_msgs.msg import Path
 from sensor_msgs.msg import IMU
-from .controller_submodule.lqr_calculator import VESC_
+from .controller_submodule.lqr_calculator import 
 import time
 import os
 
