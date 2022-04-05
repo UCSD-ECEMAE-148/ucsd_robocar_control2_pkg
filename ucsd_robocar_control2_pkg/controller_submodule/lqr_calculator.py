@@ -59,8 +59,6 @@ def plotting_example():
             plt.subplot(2, 2, K+1)
             plt.xlabel("Velocity (m/s)")
             plt.ylabel(f"K{K+1} Gain")
-            k_t = K_mat[:, K].flat[:]
-            k_t1 = np.squeeze(k_t[0])
             k_flat = list(np.concatenate(K_mat[:, K]).flat)
             # print(k_flat)
             plt.scatter(Vx_vec, k_flat)
