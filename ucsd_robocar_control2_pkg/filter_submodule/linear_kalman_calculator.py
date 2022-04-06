@@ -20,7 +20,9 @@ class LinearKalmanFilter:
     def build_system(self, Vx):
         self.sysd = self.lqr_car.build_error_model(Vx)
 
-    def lkf(self, A, B, C, D, x0, u, y, P0, Qo, Ro):
+    def lkf(self, sys, x0, u, y, P0, Qo, Ro):
+        self.sysd = sys
+        [A, B, C, D] = ssdata(self.sysd)
         A = np.array(A)
         B = np.array(B)
         C = np.array(C)
@@ -93,13 +95,14 @@ class LinearKalmanFilter:
                     print(f"K: {K}")
                     print(f"y: {self.yhat}")
                     print(f"y_mat: {self.yhat_mat}")
+
+        return self.xhat
             
 
 
 def main():
     my_kalman = LinearKalmanFilter()
     my_kalman.build_system(5)
-    [A, B, C, D] = ssdata(my_kalman.sysd)
     x0 = [1, 1, 1, 1]
     u = [1, 1, 1, 1]
     y = np.array([[1, 1, 1, 1],
@@ -110,7 +113,7 @@ def main():
     Qo = np.diag([1, 1, 1, 1])
     Ro = [0.1]
     my_kalman.debug = True
-    my_kalman.lkf(A, B, C, D, x0, u, y, P0, Qo, Ro)
+    my_kalman.lkf(my_kalman.sysd, x0, u, y, P0, Qo, Ro)
 
 
 if __name__ == '__main__':

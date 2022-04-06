@@ -8,30 +8,30 @@ from .controller_submodule.car_model import CarModel
 
 
 class LQRDesign:
-    def __init__(self, car_parameter_input_path):
-        self.Ts = 0.01
-        self.sysd = 0
-        self.car_parameter_input_path = car_parameter_input_path
-        self.lqr_car = CarModel()
-        self.sysd = 0
+    def __init__(self, sysd):
+        self.sysd = sysd
+        self.Ts = self.sysd.dt
+        self.Q = np.diag([2.0, 0.15, 1, 1])
+        self.R = np.diag([0.001])
 
-    def build_system(self, Vx):
-        self.sysd = self.lqr_car.build_error_model(Vx)
+    def build_system(self, car_model, Vx):
+        self.sysd = car_model.build_error_model(Vx)
 
     def compute_weights(self):
         self.Q = np.diag([2.0, 0.15, 1, 1]) # FIXME: update to vary as function of Vx
         self.R = np.diag([0.001])
 
-    def compute_lqr_constant_speed(self):
+    def compute_gain_constant_speed(self, sysd):
+        self.sysd = sysd
         self.compute_weights()
         K, S, E = lqr(self.sysd, self.Q * self.Ts, self.R / self.Ts)
         return K
 
-    def compute_lqr_varying_speed(self, vx_vec):
-        k_mat = np.empty((0,4))
+    def compute_gain_varying_speed(self, car_model, vx_vec):
+        k_mat = np.empty((0, 4))
         for vx in vx_vec:
-            self.build_model(vx)
-            k = self.compute_lqr_constant_speed()
+            self.build_system(car_model, vx)
+            k = self.compute_gain_constant_speed(self.sysd)
             k_mat = np.append(k_mat, k, axis=0)
         return k_mat
 
@@ -44,31 +44,39 @@ class LQRDesign:
         a, b, c = popt
         y_fit = self.curve_fit_power_func(x_input, a, b, c)
         return y_fit
-        
 
-def plotting_example():
+
+def lqr_example():
     num_sims = 20
     V_max = 80
     V_min = 3
     Vx_vec = linspace(V_min, V_max, num_sims)
-    my_lqr = LQRDesign()
-    K_mat = my_lqr.compute_lqr_varying_speed(Vx_vec)
+    my_car = CarModel()
+    my_sys = my_car.build_error_model(V_min)
+    my_lqr = LQRDesign(my_sys)
+    K_mat = my_lqr.compute_gain_constant_speed(my_sys)
+    K_mat = my_lqr.compute_gain_varying_speed(my_car, Vx_vec)
+
     K_mat_shape = K_mat.shape
+    print(f"\nK_mat[0]: {K_mat.flat[0]}"
+          f"\nK_mat[1]: {K_mat.flat[1]}"
+          f"\nK_mat[2]: {K_mat.flat[2]}"
+          f"\nK_mat[3]: {K_mat.flat[3]}"
+          f"\nK_mat: {K_mat}")
     try:
-        for K in range(0,K_mat_shape[1]):
-            plt.subplot(2, 2, K+1)
+        for K in range(0, K_mat_shape[1]):
+            plt.subplot(2, 2, K + 1)
             plt.xlabel("Velocity (m/s)")
-            plt.ylabel(f"K{K+1} Gain")
+            plt.ylabel(f"K{K + 1} Gain")
             k_flat = list(np.concatenate(K_mat[:, K]).flat)
-            # print(k_flat)
+            print(k_flat)
             plt.scatter(Vx_vec, k_flat)
             K_fit = my_lqr.my_curve_fit(Vx_vec, k_flat)
             plt.plot(Vx_vec, K_fit)
-    except RuntimeError:
+    except ValueError or RuntimeError:
         pass
     plt.show()
 
 
 if __name__ == '__main__':
-    plotting_example()
-
+    lqr_example()

@@ -84,6 +84,11 @@ class CarModel:
         self.sysd = c2d(sys, self.Ts, method='zoh')
         return self.sysd
 
+    def calc_output(self, state):
+        measurement_output = np.dot(self.sysd.C, state)
+        return measurement_output
+
+
 
 def build_model_example():
     V_x = 3
