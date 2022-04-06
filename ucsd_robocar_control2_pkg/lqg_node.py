@@ -153,6 +153,9 @@ class LqgController(Node):
         self.theta_e = error_data.data[1] # theta_e = path_angle - car_yaw_angle
 
     def update_states(self):
+
+        # NON-LINEAR SENSOR MODEL: NEED EKF
+        
         delta_x_path = self.x_path[1] - self.x_path[0]
         delta_y_path = self.y_path[1] - self.y_path[0]
         pose_error_x = self.x - self.x_path
