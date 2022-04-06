@@ -21,17 +21,18 @@ class LQRDesign:
         self.Q = np.diag([2.0, 0.15, 1, 1]) # FIXME: update to vary as function of Vx
         self.R = np.diag([0.001])
 
-    def compute_gain_constant_speed(self, sysd):
-        self.sysd = sysd
+    def compute_single_gain_sample(self, sysd=None):
+        if sysd is not None:
+            self.sysd = sysd
         self.compute_weights()
         K, S, E = lqr(self.sysd, self.Q * self.Ts, self.R / self.Ts)
         return K
 
-    def compute_gain_varying_speed(self, car_model, vx_vec):
+    def compute_sim_gain_samples(self, car_model, vx_vec):
         k_mat = np.empty((0, 4))
         for vx in vx_vec:
             self.build_system(car_model, vx)
-            k = self.compute_gain_constant_speed(self.sysd)
+            k = self.compute_single_gain_sample(self.sysd)
             k_mat = np.append(k_mat, k, axis=0)
         return k_mat
 
@@ -54,8 +55,8 @@ def lqr_example():
     my_car = CarModel()
     my_sys = my_car.build_error_model(V_min)
     my_lqr = LQRDesign(my_sys)
-    K_mat = my_lqr.compute_gain_constant_speed(my_sys)
-    K_mat = my_lqr.compute_gain_varying_speed(my_car, Vx_vec)
+    K_mat = my_lqr.compute_single_gain_sample(my_sys)
+    K_mat = my_lqr.compute_sim_gain_samples(my_car, Vx_vec)
 
     K_mat_shape = K_mat.shape
     print(f"\nK_mat[0]: {K_mat.flat[0]}"

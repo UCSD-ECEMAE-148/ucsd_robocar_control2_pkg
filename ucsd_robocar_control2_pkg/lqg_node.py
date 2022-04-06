@@ -48,8 +48,9 @@ class LqgController(Node):
         self.P0 = np.diag([1, 1, 1, 1])
         self.Qo = np.diag([1, 1, 1, 1])
         self.Ro = [0.1]
-        self.x0 = np.array([0, 0, 0, 0])
-        self.state = self.x0
+        self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
+        self.state_measurement = self.x0
+        self.state_est = self.x0
         self.u = 0
 
         self.create_timer(self.Ts, self.controller)
@@ -85,9 +86,13 @@ class LqgController(Node):
         )
 
     def imu_measurement(self, imu_data):
+        
+        # TODO: what is frequency of data coming in?
+
         quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
         euler = tf.transformations.euler_from_quaternion(quaternion)
         
+        # FIXME: confirm coordinate axes
         # orientation
         self.roll_imu = euler[0]
         self.pitch_imu = euler[1]
@@ -108,9 +113,13 @@ class LqgController(Node):
         self.vy = self.vy + (ay * self.Ts)
 
     def pose_measurement(self, pose_data):
+
+        # TODO: what is frequency of data coming in?
+
         quaternion = (pose_data.orientation.x, pose_data.orientation.y, pose_data.orientation.z, pose_data.orientation.w)
         euler = tf.transformations.euler_from_quaternion(quaternion)
         
+        # FIXME: confirm coordinate axes
         # car orientation
         self.roll_pose_measurement = euler[0]
         self.pitch_pose_measurement = euler[1]
@@ -125,6 +134,7 @@ class LqgController(Node):
         quaternion = (path_data.orientation.x, path_data.orientation.y, path_data.orientation.z, path_data.orientation.w)
         euler = tf.transformations.euler_from_quaternion(quaternion)
         
+        # FIXME: confirm coordinate axes
         # path orientation
         self.roll_path= euler[0]
         self.pitch_path= euler[1]
@@ -136,60 +146,74 @@ class LqgController(Node):
         self.z_path = pose_data.position.z
 
     def camera_measurment(self, error_data):
-        """
-        Need:
-        -pose data and path data to calculate errors 
 
-        ecg: cross-trackk error from center of gravity (cg)
-        ecg_dot: cross-trackk error rate from cg
-        theta_e: heading error
-        theta_e_dot: heading error rate
-        """
+        # TODO: what is frequency of data coming in?
+
         self.ecg = error_data.data[0] # cross-track error (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path^2 + delta_y_path^2)
-        self.ecg_dot = error_data.data[1] # ecg_dot = vy + vx * sin(theta_error);
-        self.theta_e = error_data.data[2] # theta_e = path_angle - car_yaw_angle
-        self.theta_e_dot = error_data.data[3] # theta_e_dot = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
+        self.theta_e = error_data.data[1] # theta_e = path_angle - car_yaw_angle
 
+    def update_states(self):
+        delta_x_path = self.x_path[1] - self.x_path[0]
+        delta_y_path = self.y_path[1] - self.y_path[0]
+        pose_error_x = self.x - self.x_path
+        pose_error_y = self.y - self.y_path
+        car_heading = (self.yaw_imu + self.yaw_pose_measurement) / 2
+        theta_e_km1 = self.state_measurement[0][2]
+        theta_e_k = self.yaw_path - car_heading
+        self.state_measurement[0][0] = (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path**2 + delta_y_path**2)
+        self.state_measurement[0][2] = theta_e_k
+        self.state_measurement[0][1] = self.vy + self.vx * sin(theta_e_k)
+        self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
+        
 
     def controller(self):
+        """
+        sensor measurements:
+        -imu and pose data
+
+        reference tracking:
+        -path data
+
+        states:
+        x1 - ecg: cross-trackk error from center of gravity (cg) --- = (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path^2 + delta_y_path^2)
+        x2 - ecg_dot: cross-trackk error rate from cg --- = vy + vx * sin(theta_error)
+        x3 - theta_e: heading error --- = path_angle - car_yaw_angle
+        x4 - theta_e_dot: heading error rate --- = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
+        """
+
         # Throttle gain scheduling (function of error)
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
         throttle_float_raw = ((self.min_throttle - self.max_throttle)  / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
         throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
-        # Update Car model 
+        # Update Car model LTV system --- A(Vx)
         sys = self.car_model.build_error_model(self.vx)
-        self.y = self.car_model.calc_output(self.state)
 
         # Get gains
-        K = self.lqr_calc.compute_gain_constant_speed()
-        K1 = K.flat[0]
-        K2 = K.flat[1]
-        K3 = K.flat[2]
-        K4 = K.flat[3]
+        K = self.lqr_calc.compute_single_gain_sample(sys)
         
-        # Get optimal state estimates
-        state_est = self.kalman_calc.lkf(sys, self.x0, self.u, self.y, self.P0, self.Qo, self.Ro).flat
-        ecg = state_est[0]
-        ecg_dot = state_est[1]
-        theta_e = state_est[2]
-        theta_e_dot = state_est[3]
-        
-        steering_float_raw = K1 * ecg + K2 * ecg_dot + K3 * theta_e  + K4 * theta_e_dot
-        steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        # apply control to excite system u = -K * X_est
+        steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
+        self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+
+        # Get 
+        self.y = self.car_model.calc_output(self.state_measurement)
 
         # Publish values
         try:
             # publish control signals
-            self.twist_cmd.angular.z = steering_float
+            self.twist_cmd.angular.z = self.u
             self.twist_cmd.linear.x = throttle_float
             self.twist_publisher.publish(self.twist_cmd)
-
         except KeyboardInterrupt:
             self.twist_cmd.linear.x = self.zero_throttle
             self.twist_publisher.publish(self.twist_cmd)
+        
+        # Get optimal state estimates
+        self.state_est = self.kalman_calc.lkf(sys, self.state_est, self.u, self.y, self.P0, self.Qo, self.Ro)
 
-
+        # Get new sensor measurements
+        self.update_states()
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound==None:
@@ -205,19 +229,19 @@ class LqgController(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    lqr_publisher = LqgController()
+    lqg_publisher = LqgController()
     try:
-        rclpy.spin(lqr_publisher)
-        lqr_publisher.destroy_node()
+        rclpy.spin(lqg_publisher)
+        lqg_publisher.destroy_node()
         rclpy.shutdown()
     except KeyboardInterrupt:
-        lqr_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
-        lqr_publisher.twist_cmd.linear.x = lqr_publisher.zero_throttle
-        lqr_publisher.twist_publisher.publish(lqr_publisher.twist_cmd)
+        lqg_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
+        lqg_publisher.twist_cmd.linear.x = lqg_publisher.zero_throttle
+        lqg_publisher.twist_publisher.publish(lqg_publisher.twist_cmd)
         time.sleep(1)
-        lqr_publisher.destroy_node()
+        lqg_publisher.destroy_node()
         rclpy.shutdown()
-        lqr_publisher.get_logger().info(f'{NODE_NAME} shut down successfully.')
+        lqg_publisher.get_logger().info(f'{NODE_NAME} shut down successfully.')
 
 
 if __name__ == '__main__':
