@@ -213,7 +213,7 @@ class LqgController(Node):
             self.twist_publisher.publish(self.twist_cmd)
         
         # Get optimal state estimates
-        self.state_est = self.kalman_calc.lkf(sys, self.state_est, self.u, self.y, self.P0, self.Qo, self.Ro)
+        self.state_est = self.kalman_calc.lkf(sys, self.state_est, self.u, self.y, self.P0, self.Qo, self.Ro) # fix to update P0
 
         # Get new sensor measurements
         self.update_states()
