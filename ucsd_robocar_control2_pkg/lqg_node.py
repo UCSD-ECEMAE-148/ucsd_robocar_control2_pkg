@@ -212,7 +212,7 @@ class LqgController(Node):
         # Get gains
         K = self.lqr_calc.compute_single_gain_sample(sys)
 
-        # apply control to excite system u = -K * X_est
+        # apply control_submodule to excite system u = -K * X_est
         steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
         self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
@@ -227,7 +227,7 @@ class LqgController(Node):
 
         # Publish values
         try:
-            # publish control signals
+            # publish control_submodule signals
             self.twist_cmd.angular.z = self.u
             self.twist_cmd.linear.x = throttle_float
             self.twist_publisher.publish(self.twist_cmd)

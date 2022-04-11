@@ -265,21 +265,21 @@ class CarModel:
     def ctrb_test(self, sysd):
         result = False
         rank = np.linalg.matrix_rank(ctrb(sysd.A, sysd.B))
-        print(f"Is system controlable? {result}")
         if rank == sysd.A.shape[0]:
             result = True
         else:
-            print(f"rank of ctrb matrix: {rank}")
+            result = False
+        print(f"Is system controlable? {result}, rank of ctrb matrix: {rank}")
         return result
 
     def obsv_test(self, sysd):
         result = False
         rank = np.linalg.matrix_rank(obsv(sysd.A, sysd.C))
-        print(f"Is system observable? {result}")
         if rank == sysd.A.shape[0]:
             result = True
         else:
-            print(f"rank of obsv matrix: {rank}")
+            result = False
+        print(f"Is system observable? {result}, rank of obsv matrix: {rank}")
         return result
 
 

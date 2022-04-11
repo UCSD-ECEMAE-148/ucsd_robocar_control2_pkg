@@ -1,6 +1,6 @@
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
-from LQR.control.build_car_model import CarModel
+from LQR.control_submodule.car_model import CarModel
 
 
 class ExtendedKalmanFilter:
@@ -78,7 +78,8 @@ class ExtendedKalmanFilter:
                     print(f"y[:, k]: {y[:, k]}")
                     print(f"np.dot(K, y[:, k]): {np.dot(K, y[:, k])}")
                     print(f"np.dot(K, y[:, k]).reshape(num_states, 1)): {np.dot(K, y[:, k]).reshape(num_states, 1)}")
-                    print(f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))}")
+                    print(
+                        f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))}")
                     print(f"self.xhat_mat: {self.xhat_mat}")
                     print(f"self.xhat: {self.xhat}")
                     print(f"A: {A}")

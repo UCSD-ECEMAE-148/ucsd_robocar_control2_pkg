@@ -1,7 +1,6 @@
-from control import *
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
-from build_car_model import CarModel
+from LQR.control_submodule.car_model import CarModel
 from matplotlib import pyplot as plt
 
 

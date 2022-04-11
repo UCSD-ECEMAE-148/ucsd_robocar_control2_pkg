@@ -1,25 +1,29 @@
-from control import *
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
-import yaml
-from .controller_submodule.car_model import CarModel
+from LQR.control_submodule.car_model import CarModel
 
 
 class LQRDesign:
-    def __init__(self, sysd):
-        self.sysd = sysd
+    def __init__(self, car_model):
+        self.sysd = car_model.build_error_model(1)
+        self.num_states = self.sysd.A.shape[0]
+        self.num_inputs = self.sysd.B.shape[1]
         self.Ts = self.sysd.dt
-        self.Q = np.diag([2.0, 0.15, 1, 1])
-        self.R = np.diag([0.001])
+        self.Q = np.identity(1, dtype=float)
+        self.R = np.identity(1, dtype=float)
 
     def build_system(self, car_model, Vx):
         self.sysd = car_model.build_error_model(Vx)
 
-    def compute_weights(self):
-        self.Q = np.diag([2.0, 0.15, 1, 1]) # FIXME: update to vary as function of Vx
+    def compute_error_weights(self):
+        self.Q = np.diag([2.0, 0.15, 1, 1])  # FIXME: update to vary as function of Vx
         self.R = np.diag([0.001])
+
+    def compute_weights(self):
+        self.Q = np.identity(self.num_states, dtype=float)  # weights for outputs (states)
+        self.R = np.identity(self.num_inputs, dtype=float)  # weights for inputs
 
     def compute_single_gain_sample(self, sysd=None):
         if sysd is not None:
@@ -54,15 +58,26 @@ def lqr_example():
     Vx_vec = linspace(V_min, V_max, num_sims)
     my_car = CarModel()
     my_sys = my_car.build_error_model(V_min)
-    my_lqr = LQRDesign(my_sys)
-    K_mat = my_lqr.compute_single_gain_sample(my_sys)
+    my_lqr = LQRDesign(my_car)
+    K_s = my_lqr.compute_single_gain_sample(my_sys).flat
     K_mat = my_lqr.compute_sim_gain_samples(my_car, Vx_vec)
+    x_hat = np.array([[1.24059389],
+                      [5.64647673],
+                      [1.21848635],
+                      [1.79247224]])
 
     K_mat_shape = K_mat.shape
-    print(f"\nK_mat[0]: {K_mat.flat[0]}"
+    print(f"\nmy_sys: {my_sys}"
+          f"\nnum_states: {my_sys.A.shape[0]}"
+          f"\nnum_inputs: {my_sys.B.shape[1]}"
+          f"\nK_mat[0]: {K_mat.flat[0]}"
           f"\nK_mat[1]: {K_mat.flat[1]}"
           f"\nK_mat[2]: {K_mat.flat[2]}"
           f"\nK_mat[3]: {K_mat.flat[3]}"
+          f"\nK_s: {K_s}"
+          f"\nK_s.flat[0]: {K_s[0]}"
+          f"\nKs dot x: {np.dot(K_s, x_hat.flat)}"
+          # f"\nKs dot x flat: {-np.dot(K_s[0], x_hat).flat[0]}"
           f"\nK_mat: {K_mat}")
     try:
         for K in range(0, K_mat_shape[1]):
@@ -70,7 +85,7 @@ def lqr_example():
             plt.xlabel("Velocity (m/s)")
             plt.ylabel(f"K{K + 1} Gain")
             k_flat = list(np.concatenate(K_mat[:, K]).flat)
-            print(k_flat)
+            # print(k_flat)
             plt.scatter(Vx_vec, k_flat)
             K_fit = my_lqr.my_curve_fit(Vx_vec, k_flat)
             plt.plot(Vx_vec, K_fit)
