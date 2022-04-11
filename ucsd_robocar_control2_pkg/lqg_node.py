@@ -8,7 +8,7 @@ import tf
 from tf.transformations import euler_from_quaternion
 from .controller_submodule.lqr_calculator import LQRDesign
 from .controller_submodule.car_model import CarModel
-from .state_estimate_submodule.linear_kalman_calculator import LinearKalmanFilter
+from .state_estimate_submodule.linear_kalman_filter import LinearKalmanFilter
 import time
 import math
 import numpy as np
