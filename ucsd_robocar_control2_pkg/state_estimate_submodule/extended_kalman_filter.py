@@ -105,7 +105,7 @@ def ekf_test():
     Qo = np.diag([1, 1, 1, 1])
     Ro = [0.1]
     my_kalman.debug = True
-    x_est, P = my_kalman.lkf(my_kalman.sysd, h, H, L, M, x0, u, y, P0, Qo, Ro)
+    x_est, P = my_kalman.ekf(my_kalman.sysd, h, H, L, M, x0, u, y, P0, Qo, Ro)
     print(f"x_est: {x_est}"
           f"\nx_est[0]: {x_est[0]}"
           f"\nx_est[0]: {x_est[0][0]}"
