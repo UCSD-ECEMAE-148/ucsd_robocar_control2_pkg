@@ -12,8 +12,8 @@ import yaml
 
 def generate_launch_description():
     node_package = 'ucsd_robocar_control2_pkg'
-    config_file = 'pid_config.yaml'
-    node_name = 'pid_node'
+    config_file = 'lqg_config.yaml'
+    node_name = 'lqg_node'
 
     ld = LaunchDescription()
 
@@ -22,11 +22,11 @@ def generate_launch_description():
         'config',
         config_file)
 
-    pid_node = Node(
+    control_node = Node(
         package=node_package,
         executable=node_name,
         output='screen',
         parameters=[config])
 
-    ld.add_action(pid_node)
+    ld.add_action(control_node)
     return ld
