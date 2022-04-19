@@ -12,12 +12,12 @@ import yaml
 
 
 def generate_launch_description():
-    some_config = 'joy_teleop.yaml'
-    nav_pkg ='ucsd_robocar_control2_pkg'
+    some_config = 'manual_joy_control_config.yaml'
+    ctrl_pkg ='ucsd_robocar_control2_pkg'
     
     ld = LaunchDescription()
     config = os.path.join(
-        get_package_share_directory(nav_pkg),
+        get_package_share_directory(ctrl_pkg),
         'config',
         some_config)
 
