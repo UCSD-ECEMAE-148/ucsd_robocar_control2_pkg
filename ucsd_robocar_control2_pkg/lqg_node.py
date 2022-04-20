@@ -1,45 +1,48 @@
+import os
+import time
+import math
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, Float32MultiArray
-from geometry_msgs.msg import Twist, Pose
+from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
 from nav_msgs.msg import Path
-from sensor_msgs.msg import IMU
-import tf
-from tf.transformations import euler_from_quaternion
+from sensor_msgs.msg import Imu
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from .controller_submodule.lqr_calculator import LQRDesign
 from .controller_submodule.car_model import CarModel
-from .state_estimate_submodule.linear_kalman_filter import LinearKalmanFilter
-import time
-import math
+from .controller_submodule.linear_kalman_filter import LinearKalmanFilter
 import numpy as np
-import os
 
 NODE_NAME = 'lqg_node'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
 
-POSE_TOPIC_NAME = '/pose'
-PATH_TOPIC_NAME = '/path'
+POSE_TOPIC_NAME = '/amcl_pose'
+PATH_TOPIC_NAME = '/plan'
 ERROR_TOPIC_NAME = '/path_error'
-IMU_TOPIC_NAME = '/razor/imu'
+IMU_TOPIC_NAME = '/imu'
 
 
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
+        self.twist_publisher = self.create_publisher(
+            Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
 
         # Get sensor measurements
         # Get IMU measurement
-        self.velocity_subscriber = self.create_subscription(IMU, IMU_TOPIC_NAME, self.imu_measurement, 10)
+        self.velocity_subscriber = self.create_subscription(
+            Imu, IMU_TOPIC_NAME, self.imu_measurement, 10)
         self.Ts = 100  # imu sample frequency (Hz)
         self.vx = 0
         self.vy = 0
 
         # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(Pose, POSE_TOPIC_NAME, self.pose_measurement, 10)
+        self.pose_subscriber = self.create_subscription(
+            Pose, POSE_TOPIC_NAME, self.pose_measurement, 10)
         self.pose_subscriber
-        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
+        self.path_subscriber = self.create_subscription(
+            Path, PATH_TOPIC_NAME, self.set_path, 10)
         self.path_subscriber
 
         # Get road marker error measurements from camera
@@ -49,7 +52,7 @@ class LqgController(Node):
 
         # Controller modules
         self.car_model = CarModel()
-        self.lqr_calc = LQRDesign()
+        self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
         self.P = np.diag([1, 1, 1, 1])
         self.Qo = np.diag([1, 1, 1, 1])
@@ -100,12 +103,18 @@ class LqgController(Node):
                 ('max_right_steering', 1.0),
                 ('max_left_steering', -1.0)
             ])
-        self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
-        self.zero_throttle = self.get_parameter('zero_throttle').value  # between [-1,1] but should be around 0
-        self.max_throttle = self.get_parameter('max_throttle').value  # between [-1,1]
-        self.min_throttle = self.get_parameter('min_throttle').value  # between [-1,1]
-        self.max_right_steering = self.get_parameter('max_right_steering').value  # between [-1,1]
-        self.max_left_steering = self.get_parameter('max_left_steering').value  # between [-1,1]
+        self.error_threshold = self.get_parameter(
+            'error_threshold').value  # between [0,1]
+        # between [-1,1] but should be around 0
+        self.zero_throttle = self.get_parameter('zero_throttle').value
+        self.max_throttle = self.get_parameter(
+            'max_throttle').value  # between [-1,1]
+        self.min_throttle = self.get_parameter(
+            'min_throttle').value  # between [-1,1]
+        self.max_right_steering = self.get_parameter(
+            'max_right_steering').value  # between [-1,1]
+        self.max_left_steering = self.get_parameter(
+            'max_left_steering').value  # between [-1,1]
 
         self.get_logger().info(
             f'\nerror_threshold: {self.error_threshold}'
@@ -117,17 +126,19 @@ class LqgController(Node):
         )
 
     def imu_measurement(self, imu_data):
+        self.get_logger().info("Updating IMU")
 
         # TODO: what is frequency of data coming in?
 
-        quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
-        euler = tf.transformations.euler_from_quaternion(quaternion)
+        quaternion = (imu_data.orientation.x, imu_data.orientation.y,
+                      imu_data.orientation.z, imu_data.orientation.w)
+        euler = euler_from_quaternion(quaternion)
 
         # FIXME: confirm coordinate axes
         # orientation
         self.roll = euler[0]
         self.pitch = euler[1]
-        self.yaw = euler[2]
+        self.yaw_imu = euler[2]
 
         # angular velocity
         self.roll_rate = imu_data.angular_velocity.x
@@ -144,6 +155,7 @@ class LqgController(Node):
         self.vy = self.vy + (self.ay * self.Ts)
 
     def pose_measurement(self, pose_data):
+        self.get_logger().info("Updating POSE")
 
         # TODO: what is frequency of data coming in?
         # FIXME: confirm coordinate axes
@@ -153,8 +165,10 @@ class LqgController(Node):
         self.z = pose_data.position.z
 
     def set_path(self, path_data):
-        quaternion = (path_data.orientation.x, path_data.orientation.y, path_data.orientation.z, path_data.orientation.w)
-        euler = tf.transformations.euler_from_quaternion(quaternion)
+        self.get_logger().info("Updating PATH")
+        quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
+                      path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
+        euler = euler_from_quaternion(quaternion)
 
         # FIXME: confirm coordinate axes
         # path orientation
@@ -163,14 +177,16 @@ class LqgController(Node):
         self.yaw_path = euler[2]
 
         # path coordinates
-        self.x_path = path_data.position.x
-        self.y_path = path_data.position.y
-        self.z_path = path_data.position.z
+        self.x_path = path_data.poses[0].pose.position.x
+        self.y_path = path_data.poses[0].pose.position.y
+        self.z_path = path_data.poses[0].pose.position.z
 
     def camera_measurment(self, error_data):
         # TODO: what is frequency of data coming in?
-        self.ecg = error_data.data[0]  # cross-track error (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path^2 + delta_y_path^2)
-        self.theta_e = error_data.data[1]  # theta_e = path_angle - car_yaw_angle
+        # cross-track error (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path^2 + delta_y_path^2)
+        self.ecg = error_data.data[0]
+        # theta_e = path_angle - car_yaw_angle
+        self.theta_e = error_data.data[1]
 
     def update_states(self):
         # NON-LINEAR SENSOR MODEL: NEED EKF
@@ -181,12 +197,14 @@ class LqgController(Node):
         car_heading = (self.yaw_imu + self.yaw_pose_measurement) / 2
         theta_e_km1 = self.state_measurement[0][2]
         theta_e_k = self.yaw_path[0] - car_heading
-        self.state_measurement[0][0] = (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path ** 2 + delta_y_path ** 2)
+        self.state_measurement[0][0] = (
+            pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path ** 2 + delta_y_path ** 2)
         self.state_measurement[0][2] = theta_e_k
         self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
         self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
 
     def controller(self):
+        self.get_logger().info("Updating CONTROLLER")
         """
         sensor measurements:
         -imu and pose data
@@ -200,11 +218,11 @@ class LqgController(Node):
         x3 - theta_e: heading error --- = path_angle - car_yaw_angle
         x4 - theta_e_dot: heading error rate --- = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
         """
-
+        self.get_logger().info("Here 1")
         # Throttle scheduling (function of error)
-        inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(self.ek) + inf_throttle
-        throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
+        # inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
+        # throttle_float_raw = ((self.min_throttle - self.max_throttle) (1 - self.error_threshold)) * abs(self.ek) + inf_throttle
+        throttle_float = self.clamp(1.0, self.max_throttle, self.min_throttle)
 
         # Update Car model LTV system --- A(Vx)
         sys = self.car_model.build_error_model(self.vx)
@@ -214,13 +232,17 @@ class LqgController(Node):
 
         # apply control_submodule to excite system u = -K * X_est
         steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
-        self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        self.u = self.clamp(steering_float_raw,
+                            self.max_right_steering, self.max_left_steering)
+        self.get_logger().info("Here 2")
 
         # Get Current Measurement
         self.y = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(sys, self.state_est, self.u, self.y, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf(
+            sys, self.state_est, self.u, self.y, self.P, self.Qo, self.Ro)
+        self.get_logger().info("Here 3")
 
         # Get new sensor measurements
         self.update_states()
@@ -234,6 +256,7 @@ class LqgController(Node):
         except KeyboardInterrupt:
             self.twist_cmd.linear.x = self.zero_throttle
             self.twist_publisher.publish(self.twist_cmd)
+        self.get_logger().info("Here 4")
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound is None:
