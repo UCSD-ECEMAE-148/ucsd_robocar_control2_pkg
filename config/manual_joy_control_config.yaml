@@ -19,4 +19,4 @@ teleop_twist_joy_node:
       yaw: -1.0
 
     enable_button: 4  # LB shoulder button
-    enable_turbo_button: 10  # L1 shoulder button ?
+    enable_turbo_button: 0  # L1 shoulder button ?
