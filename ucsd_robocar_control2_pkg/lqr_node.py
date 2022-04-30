@@ -184,19 +184,6 @@ class LqrController(Node):
         self.z_path = path_data.poses[0].pose.position.z
         self.theta_p = np.arctan2(self.y_path, self.x_path)
 
-    def update_gains(self):
-        K_mat=[]
-        # put all coeff for each gain function into matrix with dim: 4x3
-        coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
-        for coeff in coeff_mat:
-            K = self.calc_gain_power_function(coeff)
-            K_mat.append(K)
-        self.K1=K_mat[0]
-        self.K2=K_mat[1]
-        self.K3=K_mat[2]
-        self.K4=K_mat[3]
-        K = self.lqr_calc.compute_single_gain_sample(sys)
-
     def calc_cross_track_error(self):
         efa_x = self.x_path - self.x
         efa_y = self.y_path - self.y
@@ -216,7 +203,23 @@ class LqrController(Node):
         e_cg = (R_y * delta_x - R_x * delta_y) / r_2
         return e_cg, e_cg_index
 
+    def update_gains(self):
+        self.get_logger().info("Updating GAINS")
+        K_mat=[]
+        # put all coeff for each gain function into matrix with dim: 4x3
+        coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
+        for coeff in coeff_mat:
+            K = self.calc_gain_power_function(coeff)
+            K_mat.append(K)
+        self.K1=K_mat[0]
+        self.K2=K_mat[1]
+        self.K3=K_mat[2]
+        self.K4=K_mat[3]
+        K = self.lqr_calc.compute_single_gain_sample(sys)
+        return K
+
     def update_states(self):
+        self.get_logger().info("Updating STATES")
         delta_x_path = self.x_path[1] - self.x_path[0]
         delta_y_path = self.y_path[1] - self.y_path[0]
         pose_error_x = self.x - self.x_path[0]
@@ -227,7 +230,6 @@ class LqrController(Node):
         self.state_measurement[0][2] = theta_e_k
         self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
         self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
-
 
     def controller(self, error_data):
         """
@@ -241,26 +243,24 @@ class LqrController(Node):
         theta_e: heading error
         theta_e_dot: heading error rate
         """
+
+        # Update Car model LTV system --- A(Vx)
+        sys = self.car_model.build_error_model(self.vx)
+
         # get updated gains
-        self.update_gains()
-
-        # setting up LQR control
-        self.ecg = error_data.data[0]
-        # ecg_dot = vy + vx * sin(theta_error);
-        self.ecg_dot = error_data.data[1]
-        self.theta_e = error_data.data[2]  # theta_e = path_angle - car_yaw_angle
-        # theta_e_dot = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
-        self.theta_e_dot = error_data.data[3]
-
-        # Throttle gain scheduling (function of error)
-        self.inf_throttle=self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw=((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
-        throttle_float=self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
+        K = self.update_gains()
 
         # Steering LQR
-        steering_float_raw = self.K1 * self.ecg + self.K2 * self.ecg_dot + self.K3 * self.theta_e + self.K4 * self.theta_e_dot
+        steering_float_raw = -np.dot(K[0], self.state_measurement).flat[0]
+        self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
-        steering_float=self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        # Throttle gain scheduling (function of error)
+        self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
+        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
+WASSUP MADE BY @FRANKGARCIA78
+        # Clamp control inputs
+        steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
         # Publish values
         try:
