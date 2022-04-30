@@ -13,8 +13,7 @@ NODE_NAME = 'lqr_node'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
 
 POSE_TOPIC_NAME = '/amcl_pose'
-PATH_TOPIC_NAME = '/plan'
-ERROR_TOPIC_NAME = '/path_error'
+PATH_TOPIC_NAME = '/global_trajectory'
 IMU_TOPIC_NAME = '/razor/imu'
 
 
@@ -32,15 +31,43 @@ class LqrController(Node):
         self.vy = 0
 
         # One or the other...
-        self.pose_subscriber = self.create_subscription(
-            PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.set_pose, 10)
+        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.set_pose, 10)
         # self.pose_subscriber
-        self.path_subscriber = self.create_subscription(
-            Path, PATH_TOPIC_NAME, self.set_path, 10)
-        # self.path_subscriber
-        # OR
-        # self.pose_error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.controller, 10)
-        # self.pose_error_subscriber
+        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
+
+        # Controller modules
+        self.car_model = CarModel()
+        self.lqr_calc = LQRDesign(self.car_model)
+        self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
+        self.state_measurement = self.x0
+        self.u = 0
+
+        # Sensor measurements
+        self.x = 0
+        self.y = 0
+        self.z = 0
+        self.roll = 0
+        self.pitch = 0
+        self.yaw = 0
+        self.roll_rate = 0
+        self.pitch_rate = 0
+        self.yaw_rate = 0
+        self.ax = 0
+        self.ay = 0
+        self.az = 0
+
+        # Path coordinates
+        self.x_path = []
+        self.y_path = []
+        self.z_path = []
+        self.roll_path = []
+        self.pitch_path = []
+        self.yaw_path = []
+
+        # Calculated states
+        self.ecg = 0  # cross-track error
+        self.theta_e = 0  # heading error
+        self.theta_e_dot = 0  # heading error yaw_rate
 
         # Default actuator values
         # self.declare_parameters(
@@ -69,18 +96,13 @@ class LqrController(Node):
         self.k2_coeff=self.get_parameter('k2_coeff').value
         self.k3_coeff=self.get_parameter('k3_coeff').value
         self.k4_coeff=self.get_parameter('k4_coeff').value
-        self.error_threshold=self.get_parameter(
-            'error_threshold').value  # between [0,1]
+        self.error_threshold=self.get_parameter('error_threshold').value  # between [0,1]
         # between [-1,1] but should be around 0
         self.zero_throttle=self.get_parameter('zero_throttle').value
-        self.max_throttle=self.get_parameter(
-            'max_throttle').value  # between [-1,1]
-        self.min_throttle=self.get_parameter(
-            'min_throttle').value  # between [-1,1]
-        self.max_right_steering=self.get_parameter(
-            'max_right_steering').value  # between [-1,1]
-        self.max_left_steering=self.get_parameter(
-            'max_left_steering').value  # between [-1,1]
+        self.max_throttle=self.get_parameter('max_throttle').value  # between [-1,1]
+        self.min_throttle=self.get_parameter('min_throttle').value  # between [-1,1]
+        self.max_right_steering=self.get_parameter('max_right_steering').value  # between [-1,1]
+        self.max_left_steering=self.get_parameter('max_left_steering').value  # between [-1,1]
 
         # initializing control
         self.Ts=float(1/20)
@@ -102,54 +124,110 @@ class LqrController(Node):
             f'\nmax_left_steering: {self.max_left_steering}'
         )
 
-    def update_velocity(self, imu_data):
-        quaternion=(imu_data.orientation.x, imu_data.orientation.y,
-                    imu_data.orientation.z, imu_data.orientation.w)
-        euler=tf.transformations.euler_from_quaternion(quaternion)
+    def imu_measurement(self, imu_data):
+        self.get_logger().info("Updating IMU")
 
+        # TODO: what is frequency of data coming in?
+
+        quaternion = (imu_data.orientation.x, imu_data.orientation.y,
+                      imu_data.orientation.z, imu_data.orientation.w)
+        euler = euler_from_quaternion(quaternion)
+
+        # FIXME: confirm coordinate axes
         # orientation
-        roll=euler[0]
-        pitch=euler[1]
-        yaw=euler[2]
+        self.roll = euler[0]
+        self.pitch = euler[1]
+        self.yaw_imu = euler[2]
 
         # angular velocity
-        roll_rate=imu_data.angular_velocity.x
-        pitch_rate=imu_data.angular_velocity.y
-        yaw_rate=imu_data.angular_velocity.z
+        self.roll_rate = imu_data.angular_velocity.x
+        self.pitch_rate = imu_data.angular_velocity.y
+        self.yaw_rate = imu_data.angular_velocity.z
 
         # linear acceleration
-        ax=imu_data.linear_acceleration.x
-        ay=imu_data.linear_acceleration.y
-        az=imu_data.linear_acceleration.z
+        self.ax = imu_data.linear_acceleration.x
+        self.ay = imu_data.linear_acceleration.y
+        self.az = imu_data.linear_acceleration.z
 
         # linear velocity
-        self.vx=self.vx + (ax * self.Ts)
-        self.vy=self.vy + (ay * self.Ts)
+        self.vx = self.vx + (self.ax * self.Ts)
+        self.vy = self.vy + (self.ay * self.Ts)
 
-    def set_pose(self, pose_data):
-        pass
+    def odom_measurement(self, odom_data):
+        self.vx = odom_data.twist.twist.linear.x
+
+    def pose_measurement(self, pose_data):
+        self.get_logger().info("Updating POSE")
+
+        # TODO: what is frequency of data coming in?
+        # FIXME: confirm coordinate axes
+        # car coordinates
+        self.x = pose_data.position.x
+        self.y = pose_data.position.y
+        self.z = pose_data.position.z
 
     def set_path(self, path_data):
-        pass
+        self.get_logger().info("Updating PATH")
+        quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
+                      path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
+        euler = euler_from_quaternion(quaternion)
 
-    def calc_gain_power_function(self, coeff):
-        a=coeff[0]
-        b=coeff[1]
-        c=coeff[2]
-        K=a * self.vx**b + c
-        return K
+        # FIXME: confirm coordinate axes
+        # path orientation
+        self.roll_path = euler[0]
+        self.pitch_path = euler[1]
+        self.yaw_path = euler[2]
+
+        # path coordinates
+        self.x_path = path_data.poses[0].pose.position.x
+        self.y_path = path_data.poses[0].pose.position.y
+        self.z_path = path_data.poses[0].pose.position.z
+        self.theta_p = np.arctan2(self.y_path, self.x_path)
 
     def update_gains(self):
         K_mat=[]
         # put all coeff for each gain function into matrix with dim: 4x3
         coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
         for coeff in coeff_mat:
-            K=self.calc_gain_power_function(coeff)
+            K = self.calc_gain_power_function(coeff)
             K_mat.append(K)
         self.K1=K_mat[0]
         self.K2=K_mat[1]
         self.K3=K_mat[2]
         self.K4=K_mat[3]
+        K = self.lqr_calc.compute_single_gain_sample(sys)
+
+    def calc_cross_track_error(self):
+        efa_x = self.x_path - self.x
+        efa_y = self.y_path - self.y
+        efa_mag = np.power(np.power(efa_x,2) + np.power(efa_y, 2), 0.5);
+        efa_mag1, efa_mag2 = np.partition(efa_mag, 1)[0:2]
+        efa_mag1_index = np.where(efa_mag == efa_mag1)
+        efa_mag2_index = np.where(efa_mag == efa_mag2)
+        Px1 = self.x_path[efa_mag1_index]
+        Px2 = self.x_path[efa_mag2_index]
+        Py1 = self.y_path[efa_mag1_index]
+        Py2 = self.y_path[efa_mag2_index]
+        delta_x = Px2 - Px1
+        delta_y = Py2 - Py1
+        R_x = self.x - Px1
+        R_y = self.y - Py1
+        r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
+        e_cg = (R_y * delta_x - R_x * delta_y) / r_2
+        return e_cg, e_cg_index
+
+    def update_states(self):
+        delta_x_path = self.x_path[1] - self.x_path[0]
+        delta_y_path = self.y_path[1] - self.y_path[0]
+        pose_error_x = self.x - self.x_path[0]
+        pose_error_y = self.y - self.y_path[0]
+        theta_e_km1 = self.state_measurement[0][2]
+        self.state_measurement[0][0], e_cg_index = self.calc_cross_track_error()
+        theta_e_k = self.theta_p[e_cg_index] - self.yaw_imu
+        self.state_measurement[0][2] = theta_e_k
+        self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
+        self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
+
 
     def controller(self, error_data):
         """
@@ -167,28 +245,22 @@ class LqrController(Node):
         self.update_gains()
 
         # setting up LQR control
-        self.ecg=error_data.data[0]
+        self.ecg = error_data.data[0]
         # ecg_dot = vy + vx * sin(theta_error);
-        self.ecg_dot=error_data.data[1]
-        self.theta_e=error_data.data[2]  # theta_e = path_angle - car_yaw_angle
+        self.ecg_dot = error_data.data[1]
+        self.theta_e = error_data.data[2]  # theta_e = path_angle - car_yaw_angle
         # theta_e_dot = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
-        self.theta_e_dot=error_data.data[3]
+        self.theta_e_dot = error_data.data[3]
 
         # Throttle gain scheduling (function of error)
-        self.inf_throttle=self.min_throttle - \
-            (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw=((self.min_throttle - self.max_throttle) / \
-                            (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
-        throttle_float=self.clamp(
-            throttle_float_raw, self.max_throttle, self.min_throttle)
+        self.inf_throttle=self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
+        throttle_float_raw=((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
+        throttle_float=self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
-        # Steering LQR (TODO: add functions to calculate parameters below)
-        steering_float_raw == self.K1 * self.ecg + self.K2 * self.ecg_dot + \
-            self.K3 * self.theta_e + self.K4 * self.theta_e_dot
-        # OR
+        # Steering LQR
+        steering_float_raw = self.K1 * self.ecg + self.K2 * self.ecg_dot + self.K3 * self.theta_e + self.K4 * self.theta_e_dot
 
-        steering_float=self.clamp(
-            steering_float_raw, self.max_right_steering, self.max_left_steering)
+        steering_float=self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
         # Publish values
         try:

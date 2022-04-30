@@ -17,9 +17,10 @@ NODE_NAME = 'lqg_node'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
 
 POSE_TOPIC_NAME = '/amcl_pose'
-PATH_TOPIC_NAME = '/plan'
+PATH_TOPIC_NAME = '/global_trajectory'
 ERROR_TOPIC_NAME = '/path_error'
 IMU_TOPIC_NAME = '/imu'
+ODOM_TOPIC_NAME = '/odom'
 
 
 class LqgController(Node):
@@ -103,18 +104,13 @@ class LqgController(Node):
                 ('max_right_steering', 1.0),
                 ('max_left_steering', -1.0)
             ])
-        self.error_threshold = self.get_parameter(
-            'error_threshold').value  # between [0,1]
+        self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
         # between [-1,1] but should be around 0
         self.zero_throttle = self.get_parameter('zero_throttle').value
-        self.max_throttle = self.get_parameter(
-            'max_throttle').value  # between [-1,1]
-        self.min_throttle = self.get_parameter(
-            'min_throttle').value  # between [-1,1]
-        self.max_right_steering = self.get_parameter(
-            'max_right_steering').value  # between [-1,1]
-        self.max_left_steering = self.get_parameter(
-            'max_left_steering').value  # between [-1,1]
+        self.max_throttle = self.get_parameter('max_throttle').value  # between [-1,1]
+        self.min_throttle = self.get_parameter('min_throttle').value  # between [-1,1]
+        self.max_right_steering = self.get_parameter('max_right_steering').value  # between [-1,1]
+        self.max_left_steering = self.get_parameter('max_left_steering').value  # between [-1,1]
 
         self.get_logger().info(
             f'\nerror_threshold: {self.error_threshold}'
@@ -154,6 +150,9 @@ class LqgController(Node):
         self.vx = self.vx + (self.ax * self.Ts)
         self.vy = self.vy + (self.ay * self.Ts)
 
+    def odom_measurement(self, odom_data):
+        self.vx = odom_data.twist.twist.linear.x
+
     def pose_measurement(self, pose_data):
         self.get_logger().info("Updating POSE")
 
@@ -181,13 +180,6 @@ class LqgController(Node):
         self.y_path = path_data.poses[0].pose.position.y
         self.z_path = path_data.poses[0].pose.position.z
 
-    def camera_measurment(self, error_data):
-        # TODO: what is frequency of data coming in?
-        # cross-track error (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path^2 + delta_y_path^2)
-        self.ecg = error_data.data[0]
-        # theta_e = path_angle - car_yaw_angle
-        self.theta_e = error_data.data[1]
-
     def update_states(self):
         # NON-LINEAR SENSOR MODEL: NEED EKF
         delta_x_path = self.x_path[1] - self.x_path[0]
@@ -197,8 +189,7 @@ class LqgController(Node):
         car_heading = (self.yaw_imu + self.yaw_pose_measurement) / 2
         theta_e_km1 = self.state_measurement[0][2]
         theta_e_k = self.yaw_path[0] - car_heading
-        self.state_measurement[0][0] = (
-            pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path ** 2 + delta_y_path ** 2)
+        self.state_measurement[0][0] = (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path ** 2 + delta_y_path ** 2)
         self.state_measurement[0][2] = theta_e_k
         self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
         self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
@@ -207,7 +198,7 @@ class LqgController(Node):
         self.get_logger().info("Updating CONTROLLER")
         """
         sensor measurements:
-        -imu and pose data
+        -imu, odom and pose data
 
         reference tracking:
         -path data
@@ -232,16 +223,14 @@ class LqgController(Node):
 
         # apply control_submodule to excite system u = -K * X_est
         steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
-        self.u = self.clamp(steering_float_raw,
-                            self.max_right_steering, self.max_left_steering)
+        self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
         self.get_logger().info("Here 2")
 
         # Get Current Measurement
         self.y = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(
-            sys, self.state_est, self.u, self.y, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf(sys, self.state_est, self.u, self.y, self.P, self.Qo, self.Ro)
         self.get_logger().info("Here 3")
 
         # Get new sensor measurements

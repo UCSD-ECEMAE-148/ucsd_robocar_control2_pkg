@@ -67,11 +67,7 @@ class LinearKalmanFilter:
 
                 # filtered output prediction
                 self.yhat = np.dot(C, self.xhat)
-
-                # store output, gain and variance
-                # self.K_mat[:, k] = K.transpose()  # store the values of K
-                self.yhat_mat[:, k] = self.yhat.transpose()
-
+                
             except:
                 if self.debug:
                     print("Error occured during calculations")
@@ -82,8 +78,7 @@ class LinearKalmanFilter:
                     print(f"y[:, k]: {y[:, k]}")
                     print(f"np.dot(K, y[:, k]): {np.dot(K, y[:, k])}")
                     print(f"np.dot(K, y[:, k]).reshape(num_states, 1)): {np.dot(K, y[:, k]).reshape(num_states, 1)}")
-                    print(
-                        f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))}")
+                    print(f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))}")
                     print(f"self.xhat_mat: {self.xhat_mat}")
                     print(f"self.xhat: {self.xhat}")
                     print(f"A: {A}")
@@ -97,7 +92,7 @@ class LinearKalmanFilter:
                     print(f"y: {self.yhat}")
                     print(f"y_mat: {self.yhat_mat}")
 
-        return self.xhat
+        return self.xhat, self.Pp
 
 
 def main():
