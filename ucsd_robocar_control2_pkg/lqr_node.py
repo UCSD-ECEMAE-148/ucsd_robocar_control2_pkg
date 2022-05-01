@@ -20,27 +20,28 @@ IMU_TOPIC_NAME = '/razor/imu'
 class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.twist_publisher = self.create_publisher(
-            Twist, ACTUATOR_TOPIC_NAME, 10)
+        self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
 
-        self.velocity_subscriber = self.create_subscription(
-            Imu, IMU_TOPIC_NAME, self.update_velocity, 10)
-        self.Ts = 100  # imu sample frequency (Hz)
-        self.vx = 0
-        self.vy = 0
-
-        # One or the other...
+        ### Get sensor measurements ###
+        #
+        # Get GPS/Lidar measurements
         self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.set_pose, 10)
-        # self.pose_subscriber
+        self.pose_subscriber
+
+        # Get Odometry measurements
+        self.odom_subscriber = self.create_subscription(Odom, ODOM_TOPIC_NAME, self.odom_measurement, 10)
+        self.odom_subscriber
+
+        # Get Reference Trajectory
         self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
+        self.path_subscriber
 
         # Controller modules
         self.car_model = CarModel()
         self.lqr_calc = LQRDesign(self.car_model)
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
-        self.u = 0
 
         # Sensor measurements
         self.x = 0
@@ -52,6 +53,8 @@ class LqrController(Node):
         self.roll_rate = 0
         self.pitch_rate = 0
         self.yaw_rate = 0
+        self.vx = 0
+        self.vy = 0
         self.ax = 0
         self.ay = 0
         self.az = 0
@@ -70,24 +73,25 @@ class LqrController(Node):
         self.theta_e_dot = 0  # heading error yaw_rate
 
         # Default actuator values
-        # self.declare_parameters(
-        #     namespace='',
-        #     parameters=[
-        #         ('k1_gain': 1.0,
-        #         ('k2_gain': 1.0,
-        #         ('k3_gain': 1.0,
-        #         ('k4_gain': 1.0,
-        #         ('k1_coeff': [1.0, 1.0, 1.0],
-        #         ('k2_coeff': [1.0, 1.0, 1.0],
-        #         ('k3_coeff': [1.0, 1.0, 1.0],
-        #         ('k4_coeff': [1.0, 1.0, 1.0],
-        #         ('error_threshold', 0.15),
-        #         ('zero_throttle', 0.0),
-        #         ('max_throttle', 0.2),
-        #         ('min_throttle', 0.1),
-        #         ('max_right_steering', 1.0),
-        #         ('max_left_steering', -1.0)
-        #     ])
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('k1_gain', 1.0),
+                ('k2_gain', 1.0),
+                ('k3_gain', 1.0),
+                ('k4_gain', 1.0),
+                ('k1_coeff', [1.0, 1.0, 1.0]),
+                ('k2_coeff', [1.0, 1.0, 1.0]),
+                ('k3_coeff', [1.0, 1.0, 1.0]),
+                ('k4_coeff', [1.0, 1.0, 1.0]),
+                ('error_threshold', 0.15),
+                ('zero_throttle', 0.0),
+                ('max_throttle', 0.2),
+                ('min_throttle', 0.1),
+                ('max_right_steering', 1.0),
+                ('max_left_steering', -1.0)
+            ])
+
         self.k1_gain=self.get_parameter('k1_gain').value
         self.k2_gain=self.get_parameter('k2_gain').value
         self.k3_gain=self.get_parameter('k3_gain').value
@@ -97,15 +101,11 @@ class LqrController(Node):
         self.k3_coeff=self.get_parameter('k3_coeff').value
         self.k4_coeff=self.get_parameter('k4_coeff').value
         self.error_threshold=self.get_parameter('error_threshold').value  # between [0,1]
-        # between [-1,1] but should be around 0
-        self.zero_throttle=self.get_parameter('zero_throttle').value
+        self.zero_throttle=self.get_parameter('zero_throttle').value  # between [-1,1] but should be around 0
         self.max_throttle=self.get_parameter('max_throttle').value  # between [-1,1]
         self.min_throttle=self.get_parameter('min_throttle').value  # between [-1,1]
         self.max_right_steering=self.get_parameter('max_right_steering').value  # between [-1,1]
         self.max_left_steering=self.get_parameter('max_left_steering').value  # between [-1,1]
-
-        # initializing control
-        self.Ts=float(1/20)
 
         self.get_logger().info(
             f'\nk1_gain: {self.k1_gain}'
@@ -124,37 +124,27 @@ class LqrController(Node):
             f'\nmax_left_steering: {self.max_left_steering}'
         )
 
-    def imu_measurement(self, imu_data):
-        self.get_logger().info("Updating IMU")
+        # Call controller
+        self.Ts = 1/100  # contoller publish frequency (Hz)
+        self.create_timer(self.Ts, self.controller)
 
-        # TODO: what is frequency of data coming in?
-
-        quaternion = (imu_data.orientation.x, imu_data.orientation.y,
-                      imu_data.orientation.z, imu_data.orientation.w)
-        euler = euler_from_quaternion(quaternion)
+    def odom_measurement(self, odom_data):
+        # position
+        self.x = odom_data.pose.pose.position.x
+        self.y = odom_data.pose.pose.position.y
+        self.z = odom_data.pose.pose.position.z
 
         # FIXME: confirm coordinate axes
         # orientation
+        quaternion = (odom_data.orientation.x, odom_data.orientation.y, odom_data.orientation.z, odom_data.orientation.w)
+        euler = euler_from_quaternion(quaternion)
         self.roll = euler[0]
         self.pitch = euler[1]
-        self.yaw_imu = euler[2]
+        self.yaw = euler[2]
 
-        # angular velocity
-        self.roll_rate = imu_data.angular_velocity.x
-        self.pitch_rate = imu_data.angular_velocity.y
-        self.yaw_rate = imu_data.angular_velocity.z
-
-        # linear acceleration
-        self.ax = imu_data.linear_acceleration.x
-        self.ay = imu_data.linear_acceleration.y
-        self.az = imu_data.linear_acceleration.z
-
-        # linear velocity
-        self.vx = self.vx + (self.ax * self.Ts)
-        self.vy = self.vy + (self.ay * self.Ts)
-
-    def odom_measurement(self, odom_data):
+        # velocity
         self.vx = odom_data.twist.twist.linear.x
+        self.vy = odom_data.twist.twist.linear.y
 
     def pose_measurement(self, pose_data):
         self.get_logger().info("Updating POSE")
@@ -168,21 +158,21 @@ class LqrController(Node):
 
     def set_path(self, path_data):
         self.get_logger().info("Updating PATH")
-        quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
-                      path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
-        euler = euler_from_quaternion(quaternion)
 
+        # TODO: Currently not working with Lidar Nav
         # FIXME: confirm coordinate axes
-        # path orientation
-        self.roll_path = euler[0]
-        self.pitch_path = euler[1]
-        self.yaw_path = euler[2]
+        # path orientation 
+        # quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
+        #               path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
+        # euler = euler_from_quaternion(quaternion)
+        # self.roll_path = euler[0]
+        # self.pitch_path = euler[1]
+        # self.yaw_path = euler[2]
 
-        # path coordinates
+        # path coordinates (GLOBAL)
         self.x_path = path_data.poses[0].pose.position.x
         self.y_path = path_data.poses[0].pose.position.y
         self.z_path = path_data.poses[0].pose.position.z
-        self.theta_p = np.arctan2(self.y_path, self.x_path)
 
     def calc_cross_track_error(self):
         efa_x = self.x_path - self.x
@@ -225,10 +215,11 @@ class LqrController(Node):
         pose_error_x = self.x - self.x_path[0]
         pose_error_y = self.y - self.y_path[0]
         theta_e_km1 = self.state_measurement[0][2]
-        self.state_measurement[0][0], e_cg_index = self.calc_cross_track_error()
-        theta_e_k = self.theta_p[e_cg_index] - self.yaw_imu
-        self.state_measurement[0][2] = theta_e_k
+        e_cg, e_cg_index = self.calc_cross_track_error()
+        theta_e_k = self.theta_p[e_cg_index] - self.yaw_imu  # Path needs to be in reference with car not map (local path)
+        self.state_measurement[0][0] = e_cg
         self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
+        self.state_measurement[0][2] = theta_e_k
         self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
 
     def controller(self, error_data):
@@ -252,13 +243,15 @@ class LqrController(Node):
 
         # Steering LQR
         steering_float_raw = -np.dot(K[0], self.state_measurement).flat[0]
-        self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
-        # Throttle gain scheduling (function of error)
+        # TODO: function of cross-track error (e_cg) or heading error (theta_e)??
+        # Throttle gain scheduling
+        tracking_error = self.state_measurement[0][0]
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
-WASSUP MADE BY @FRANKGARCIA78
+        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
+
         # Clamp control inputs
+        # FIXME: need to convert to radians and m/s respectively 
         steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
         throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 

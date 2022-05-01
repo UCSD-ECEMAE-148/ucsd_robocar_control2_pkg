@@ -26,32 +26,33 @@ ODOM_TOPIC_NAME = '/odom'
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.twist_publisher = self.create_publisher(
-            Twist, ACTUATOR_TOPIC_NAME, 10)
+        self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
 
-        # Get sensor measurements
+        ### Get sensor measurements ###
+        #
         # Get IMU measurement
-        self.velocity_subscriber = self.create_subscription(
-            Imu, IMU_TOPIC_NAME, self.imu_measurement, 10)
-        self.Ts = 100  # imu sample frequency (Hz)
-        self.vx = 0
-        self.vy = 0
+        self.velocity_subscriber = self.create_subscription(Imu, IMU_TOPIC_NAME, self.imu_measurement, 10)
+        self.velocity_subscriber
 
         # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(
-            Pose, POSE_TOPIC_NAME, self.pose_measurement, 10)
+        self.pose_subscriber = self.create_subscription(Pose, POSE_TOPIC_NAME, self.pose_measurement, 10)
         self.pose_subscriber
-        self.path_subscriber = self.create_subscription(
-            Path, PATH_TOPIC_NAME, self.set_path, 10)
+
+        # Get Odometry measurements
+        self.odom_subscriber = self.create_subscription(Odom, ODOM_TOPIC_NAME, self.odom_measurement, 10)
+        self.odom_subscriber
+
+        # Get Reference Trajectory
+        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
         self.path_subscriber
 
+        # TODO: Make compatible with Camera Navigation via: Lane detection
         # Get road marker error measurements from camera
-        self.pose_error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME,
-                                                              self.camera_measurment, 10)
-        self.pose_error_subscriber
+        # self.pose_error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.camera_measurment, 10)
+        # self.pose_error_subscriber
 
-        # Controller modules
+        ### Controller and State Estimate modules ###
         self.car_model = CarModel()
         self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
@@ -61,7 +62,6 @@ class LqgController(Node):
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.state_est = self.x0
-        self.u = 0
 
         # Sensor measurements
         self.x = 0
@@ -73,6 +73,8 @@ class LqgController(Node):
         self.roll_rate = 0
         self.pitch_rate = 0
         self.yaw_rate = 0
+        self.vx = 0
+        self.vy = 0
         self.ax = 0
         self.ay = 0
         self.az = 0
@@ -90,9 +92,6 @@ class LqgController(Node):
         self.theta_e = 0  # heading error
         self.theta_e_dot = 0  # heading error rate
 
-        # Call controller
-        self.create_timer(self.Ts, self.controller)
-
         # Declare ROS parameters
         self.declare_parameters(
             namespace='',
@@ -105,8 +104,7 @@ class LqgController(Node):
                 ('max_left_steering', -1.0)
             ])
         self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
-        # between [-1,1] but should be around 0
-        self.zero_throttle = self.get_parameter('zero_throttle').value
+        self.zero_throttle = self.get_parameter('zero_throttle').value  # between [-1,1] but should be around 0
         self.max_throttle = self.get_parameter('max_throttle').value  # between [-1,1]
         self.min_throttle = self.get_parameter('min_throttle').value  # between [-1,1]
         self.max_right_steering = self.get_parameter('max_right_steering').value  # between [-1,1]
@@ -121,17 +119,19 @@ class LqgController(Node):
             f'\nmax_left_steering: {self.max_left_steering}'
         )
 
+        # Call controller
+        self.Ts = 1/100  # contoller publish frequency (Hz)
+        self.create_timer(self.Ts, self.controller)
+
     def imu_measurement(self, imu_data):
         self.get_logger().info("Updating IMU")
 
         # TODO: what is frequency of data coming in?
-
-        quaternion = (imu_data.orientation.x, imu_data.orientation.y,
-                      imu_data.orientation.z, imu_data.orientation.w)
-        euler = euler_from_quaternion(quaternion)
-
+        
         # FIXME: confirm coordinate axes
         # orientation
+        quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
+        euler = euler_from_quaternion(quaternion)
         self.roll = euler[0]
         self.pitch = euler[1]
         self.yaw_imu = euler[2]
@@ -151,7 +151,22 @@ class LqgController(Node):
         self.vy = self.vy + (self.ay * self.Ts)
 
     def odom_measurement(self, odom_data):
+        # position
+        self.x = odom_data.pose.pose.position.x
+        self.y = odom_data.pose.pose.position.y
+        self.z = odom_data.pose.pose.position.z
+
+        # FIXME: confirm coordinate axes
+        # orientation
+        quaternion = (odom_data.orientation.x, odom_data.orientation.y, odom_data.orientation.z, odom_data.orientation.w)
+        euler = euler_from_quaternion(quaternion)
+        self.roll = euler[0]
+        self.pitch = euler[1]
+        self.yaw = euler[2]
+
+        # velocity
         self.vx = odom_data.twist.twist.linear.x
+        self.vy = odom_data.twist.twist.linear.y
 
     def pose_measurement(self, pose_data):
         self.get_logger().info("Updating POSE")
@@ -165,33 +180,53 @@ class LqgController(Node):
 
     def set_path(self, path_data):
         self.get_logger().info("Updating PATH")
-        quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
-                      path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
-        euler = euler_from_quaternion(quaternion)
 
+        # TODO: Currently not working with Lidar Nav
         # FIXME: confirm coordinate axes
-        # path orientation
-        self.roll_path = euler[0]
-        self.pitch_path = euler[1]
-        self.yaw_path = euler[2]
+        # path orientation (Currently not working with Lidar Nav)
+        # quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
+        #               path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
+        # euler = euler_from_quaternion(quaternion)
+        # self.roll_path = euler[0]
+        # self.pitch_path = euler[1]
+        # self.yaw_path = euler[2]
 
-        # path coordinates
+        # path coordinates (GLOBAL)
         self.x_path = path_data.poses[0].pose.position.x
         self.y_path = path_data.poses[0].pose.position.y
         self.z_path = path_data.poses[0].pose.position.z
 
+    def calc_cross_track_error(self):
+        efa_x = self.x_path - self.x
+        efa_y = self.y_path - self.y
+        efa_mag = np.power(np.power(efa_x,2) + np.power(efa_y, 2), 0.5);
+        efa_mag1, efa_mag2 = np.partition(efa_mag, 1)[0:2]
+        efa_mag1_index = np.where(efa_mag == efa_mag1)
+        efa_mag2_index = np.where(efa_mag == efa_mag2)
+        Px1 = self.x_path[efa_mag1_index]
+        Px2 = self.x_path[efa_mag2_index]
+        Py1 = self.y_path[efa_mag1_index]
+        Py2 = self.y_path[efa_mag2_index]
+        delta_x = Px2 - Px1
+        delta_y = Py2 - Py1
+        R_x = self.x - Px1
+        R_y = self.y - Py1
+        r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
+        e_cg = (R_y * delta_x - R_x * delta_y) / r_2
+        return e_cg, e_cg_index
+
     def update_states(self):
-        # NON-LINEAR SENSOR MODEL: NEED EKF
+        self.get_logger().info("Updating STATES")
         delta_x_path = self.x_path[1] - self.x_path[0]
         delta_y_path = self.y_path[1] - self.y_path[0]
         pose_error_x = self.x - self.x_path[0]
         pose_error_y = self.y - self.y_path[0]
-        car_heading = (self.yaw_imu + self.yaw_pose_measurement) / 2
         theta_e_km1 = self.state_measurement[0][2]
-        theta_e_k = self.yaw_path[0] - car_heading
-        self.state_measurement[0][0] = (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path ** 2 + delta_y_path ** 2)
-        self.state_measurement[0][2] = theta_e_k
+        e_cg, e_cg_index = self.calc_cross_track_error()
+        theta_e_k = self.theta_p[e_cg_index] - self.yaw_imu
+        self.state_measurement[0][0] = e_cg
         self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
+        self.state_measurement[0][2] = theta_e_k
         self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
 
     def controller(self):
@@ -210,10 +245,6 @@ class LqgController(Node):
         x4 - theta_e_dot: heading error rate --- = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
         """
         self.get_logger().info("Here 1")
-        # Throttle scheduling (function of error)
-        # inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        # throttle_float_raw = ((self.min_throttle - self.max_throttle) (1 - self.error_threshold)) * abs(self.ek) + inf_throttle
-        throttle_float = self.clamp(1.0, self.max_throttle, self.min_throttle)
 
         # Update Car model LTV system --- A(Vx)
         sys = self.car_model.build_error_model(self.vx)
@@ -221,31 +252,41 @@ class LqgController(Node):
         # Get gains
         K = self.lqr_calc.compute_single_gain_sample(sys)
 
-        # apply control_submodule to excite system u = -K * X_est
-        steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
-        self.u = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        # Steering LQR
         self.get_logger().info("Here 2")
+        steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
+
+        # TODO: function of cross-track error (e_cg) or heading error (theta_e)??
+        # Throttle gain scheduling
+        tracking_error = self.state_measurement[0][0]
+        self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
+        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
+
+        # Clamp control inputs
+        # FIXME: need to convert to radians and m/s respectively 
+        steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
         # Get Current Measurement
         self.y = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(sys, self.state_est, self.u, self.y, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf(sys, self.state_est, steering_float, self.y, self.P, self.Qo, self.Ro)
         self.get_logger().info("Here 3")
-
-        # Get new sensor measurements
-        self.update_states()
 
         # Publish values
         try:
             # publish control_submodule signals
-            self.twist_cmd.angular.z = self.u
+            self.twist_cmd.angular.z = steering_float
             self.twist_cmd.linear.x = throttle_float
             self.twist_publisher.publish(self.twist_cmd)
         except KeyboardInterrupt:
             self.twist_cmd.linear.x = self.zero_throttle
             self.twist_publisher.publish(self.twist_cmd)
         self.get_logger().info("Here 4")
+
+        # Get new sensor measurements
+        self.update_states()
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound is None:
