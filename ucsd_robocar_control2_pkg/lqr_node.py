@@ -169,8 +169,8 @@ class LqrController(Node):
         self.z = pose_data.position.z
 
     def set_path(self, path_data):
-        self.get_logger().info("Updating PATH")
-        print(path_data.poses)
+        # self.get_logger().info("Updating PATH")
+        # print(path_data.poses)
 
         # TODO: Currently not working with Lidar Nav
         # FIXME: confirm coordinate axes
@@ -186,6 +186,8 @@ class LqrController(Node):
         self.x_path = path_data.poses[0].pose.position.x
         self.y_path = path_data.poses[0].pose.position.y
         self.z_path = path_data.poses[0].pose.position.z
+        
+        self.get_logger().info(f"(x,y,z): ({self.x_path}, {self.y_path} ,{self.z_path})")
 
     def calc_cross_track_error(self):
         efa_x = self.x_path - self.x
