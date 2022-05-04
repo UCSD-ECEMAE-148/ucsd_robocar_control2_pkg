@@ -1,7 +1,9 @@
 import time
 import os
 import rclpy
-from rclpy.node import Node
+from rclpy.node import Node 
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
 from nav_msgs.msg import Path, Odometry
@@ -21,21 +23,27 @@ ODOM_TOPIC_NAME = '/odom'
 class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
+         
+        self.controller_thread = MutuallyExclusiveCallbackGroup()
+        self.path_thread = MutuallyExclusiveCallbackGroup()
+        self.odom_thread = MutuallyExclusiveCallbackGroup()
+        self.pose_thread = MutuallyExclusiveCallbackGroup()
+
         self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
 
         ### Get sensor measurements ###
         #
         # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, 10)
+        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, callback_group=self.pose_thread, 10)
         self.pose_subscriber
 
         # Get Odometry measurements
-        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, callback_group=self.odom_thread, 10)
         self.odom_subscriber
 
         # Get Reference Trajectory
-        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
+        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, callback_group=self.path_thread, 10)
         self.path_subscriber
 
         # Sensor measurements
@@ -285,9 +293,13 @@ def main(args=None):
     rclpy.init(args=args)
     lqr_publisher=LqrController()
     try:
-        rclpy.spin(lqr_publisher)
-        lqr_publisher.destroy_node()
-        rclpy.shutdown()
+        executor = MultiThreadedExecutor(num_threads=4)
+        executor.add_node(lqr_publisher)
+        try:
+            executor.spin()
+        finally:
+            executor.shutdown()
+            lqr_publisher.destroy_node()
     except KeyboardInterrupt:
         lqr_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
         lqr_publisher.twist_cmd.linear.x=lqr_publisher.zero_throttle
