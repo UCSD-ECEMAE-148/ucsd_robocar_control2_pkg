@@ -196,16 +196,16 @@ class LqrController(Node):
 
     def update_gains(self):
         self.get_logger().info("Updating GAINS")
-        K_mat=[]
-        # put all coeff for each gain function into matrix with dim: 4x3
-        coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
-        for coeff in coeff_mat:
-            K = self.calc_gain_power_function(coeff)
-            K_mat.append(K)
-        self.K1=K_mat[0]
-        self.K2=K_mat[1]
-        self.K3=K_mat[2]
-        self.K4=K_mat[3]
+        # K_mat=[]
+        # # put all coeff for each gain function into matrix with dim: 4x3
+        # coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
+        # for coeff in coeff_mat:
+        #     K = self.calc_gain_power_function(coeff)
+        #     K_mat.append(K)
+        # self.K1=K_mat[0]
+        # self.K2=K_mat[1]
+        # self.K3=K_mat[2]
+        # self.K4=K_mat[3]
         K = self.lqr_calc.compute_single_gain_sample(sys)
         return K
 
