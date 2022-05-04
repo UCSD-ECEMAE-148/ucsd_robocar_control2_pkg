@@ -35,15 +35,15 @@ class LqrController(Node):
         ### Get sensor measurements ###
         #
         # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, callback_group=self.pose_thread, 10)
+        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, 10, callback_group=self.pose_thread)
         self.pose_subscriber
 
         # Get Odometry measurements
-        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, callback_group=self.odom_thread, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10, callback_group=self.odom_thread)
         self.odom_subscriber
 
         # Get Reference Trajectory
-        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, callback_group=self.path_thread, 10)
+        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10, callback_group=self.path_thread)
         self.path_subscriber
 
         # Sensor measurements
