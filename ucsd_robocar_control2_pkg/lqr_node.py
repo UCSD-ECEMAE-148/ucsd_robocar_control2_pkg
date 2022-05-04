@@ -137,7 +137,7 @@ class LqrController(Node):
 
         # Call controller
         self.Ts = 1/100  # contoller publish frequency (Hz)
-        self.create_timer(self.Ts, self.controller)
+        # self.create_timer(self.Ts, self.controller)
 
     def odom_measurement(self, odom_data):
         # position
@@ -159,7 +159,7 @@ class LqrController(Node):
 
     def pose_measurement(self, pose_data):
         self.get_logger().info("Updating POSE")
-        print(pose_data.poses)
+        
 
         # TODO: what is frequency of data coming in?
         # FIXME: confirm coordinate axes
@@ -170,6 +170,7 @@ class LqrController(Node):
 
     def set_path(self, path_data):
         self.get_logger().info("Updating PATH")
+        print(pose_data.poses)
 
         # TODO: Currently not working with Lidar Nav
         # FIXME: confirm coordinate axes
