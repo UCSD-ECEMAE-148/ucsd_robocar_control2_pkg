@@ -137,7 +137,7 @@ class LqrController(Node):
 
         # Call controller
         self.Ts = 1/100  # contoller publish frequency (Hz)
-        self.create_timer(self.Ts, self.controller)
+        # self.create_timer(self.Ts, self.controller)
 
     def odom_measurement(self, odom_data):
         # position
