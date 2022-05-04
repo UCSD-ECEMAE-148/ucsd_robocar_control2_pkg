@@ -15,7 +15,7 @@ import numpy as np
 NODE_NAME = 'lqr_node'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
 
-POSE_TOPIC_NAME = '/amcl_pose'
+POSE_TOPIC_NAME = '/pose'
 PATH_TOPIC_NAME = '/global_trajectory'
 IMU_TOPIC_NAME = '/razor/imu'
 ODOM_TOPIC_NAME = '/odom'
