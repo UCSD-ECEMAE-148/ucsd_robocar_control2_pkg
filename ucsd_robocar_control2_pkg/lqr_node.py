@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
-from nav_msgs.msg import Path, Odom
+from nav_msgs.msg import Path, Odometry
 from sensor_msgs.msg import Imu
 from .controller_submodule.lqr_calculator import LQRDesign
 
@@ -30,7 +30,7 @@ class LqrController(Node):
         self.pose_subscriber
 
         # Get Odometry measurements
-        self.odom_subscriber = self.create_subscription(Odom, ODOM_TOPIC_NAME, self.odom_measurement, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10)
         self.odom_subscriber
 
         # Get Reference Trajectory
