@@ -24,10 +24,10 @@ class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
          
-        self.controller_thread = MutuallyExclusiveCallbackGroup()
+        # self.controller_thread = MutuallyExclusiveCallbackGroup()
         self.path_thread = MutuallyExclusiveCallbackGroup()
-        self.odom_thread = MutuallyExclusiveCallbackGroup()
-        self.pose_thread = MutuallyExclusiveCallbackGroup()
+        # self.odom_thread = MutuallyExclusiveCallbackGroup()
+        # self.pose_thread = MutuallyExclusiveCallbackGroup()
 
         self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
@@ -35,12 +35,12 @@ class LqrController(Node):
         ### Get sensor measurements ###
         #
         # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, 10, callback_group=self.pose_thread)
-        self.pose_subscriber
+        # self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, 10, callback_group=self.pose_thread)
+        # self.pose_subscriber
 
-        # Get Odometry measurements
-        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10, callback_group=self.odom_thread)
-        self.odom_subscriber
+        # # Get Odometry measurements
+        # self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10, callback_group=self.odom_thread)
+        # self.odom_subscriber
 
         # Get Reference Trajectory
         self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10, callback_group=self.path_thread)
@@ -295,7 +295,7 @@ def main(args=None):
     rclpy.init(args=args)
     lqr_publisher=LqrController()
     try:
-        executor = MultiThreadedExecutor(num_threads=4)
+        executor = MultiThreadedExecutor(num_threads=1)
         executor.add_node(lqr_publisher)
         try:
             executor.spin()
