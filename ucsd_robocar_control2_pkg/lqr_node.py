@@ -206,7 +206,7 @@ class LqrController(Node):
         return e_cg, e_cg_index
 
     def update_gains(self):
-        self.get_logger().info("Updating GAINS")
+        # self.get_logger().info("Updating GAINS")
         # K_mat=[]
         # # put all coeff for each gain function into matrix with dim: 4x3
         # coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
