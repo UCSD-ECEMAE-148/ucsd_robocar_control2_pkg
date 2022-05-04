@@ -159,6 +159,7 @@ class LqrController(Node):
 
     def pose_measurement(self, pose_data):
         self.get_logger().info("Updating POSE")
+        print(pose_data.poses)
 
         # TODO: what is frequency of data coming in?
         # FIXME: confirm coordinate axes
