@@ -183,11 +183,13 @@ class LqrController(Node):
         # self.yaw_path = euler[2]
 
         # path coordinates (GLOBAL)
-        self.x_path = path_data.poses[0].pose.position.x
+        
+        self.x_path = [pose.position.x for pose in path_data.poses]
         self.y_path = path_data.poses[0].pose.position.y
         self.z_path = path_data.poses[0].pose.position.z
         
-        self.get_logger().info(f"(x,y,z): ({self.x_path}, {self.y_path} ,{self.z_path})")
+        # self.get_logger().info(f"(x,y,z): ({self.x_path}, {self.y_path} ,{self.z_path})")
+        self.get_logger().info(f"(x): ({self.x_path})")
 
     def calc_cross_track_error(self):
         efa_x = self.x_path - self.x
