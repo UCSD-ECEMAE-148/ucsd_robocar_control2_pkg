@@ -184,7 +184,7 @@ class LqrController(Node):
 
         # path coordinates (GLOBAL)
         
-        self.x_path = [pose.position.x for pose in path_data.poses]
+        self.x_path = [pose.pose.position.x for pose in path_data.poses]
         self.y_path = path_data.poses[0].pose.position.y
         self.z_path = path_data.poses[0].pose.position.z
         
