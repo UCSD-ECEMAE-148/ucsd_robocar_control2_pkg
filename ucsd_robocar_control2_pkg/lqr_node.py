@@ -15,7 +15,7 @@ ACTUATOR_TOPIC_NAME = '/cmd_vel'
 POSE_TOPIC_NAME = '/amcl_pose'
 PATH_TOPIC_NAME = '/global_trajectory'
 IMU_TOPIC_NAME = '/razor/imu'
-
+ODOM_TOPIC_NAME = '/odom'
 
 class LqrController(Node):
     def __init__(self):
