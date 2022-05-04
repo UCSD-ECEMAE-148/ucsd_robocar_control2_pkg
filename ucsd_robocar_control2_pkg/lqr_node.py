@@ -223,7 +223,7 @@ class LqrController(Node):
         self.state_measurement[0][2] = theta_e_k
         self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
 
-    def controller(self, error_data):
+    def controller(self):
         """
         Need:
         -pose data and path data to calculate errors
