@@ -26,7 +26,7 @@ class LqrController(Node):
         ### Get sensor measurements ###
         #
         # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.set_pose, 10)
+        self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, 10)
         self.pose_subscriber
 
         # Get Odometry measurements
