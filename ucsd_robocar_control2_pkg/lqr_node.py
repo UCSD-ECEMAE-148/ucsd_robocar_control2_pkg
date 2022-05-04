@@ -170,7 +170,7 @@ class LqrController(Node):
 
     def set_path(self, path_data):
         self.get_logger().info("Updating PATH")
-        print(pose_data.poses)
+        print(path_data.poses)
 
         # TODO: Currently not working with Lidar Nav
         # FIXME: confirm coordinate axes
