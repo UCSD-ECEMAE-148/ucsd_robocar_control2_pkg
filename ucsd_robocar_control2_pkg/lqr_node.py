@@ -54,7 +54,7 @@ class LqrController(Node):
         self.roll_rate = 0
         self.pitch_rate = 0
         self.yaw_rate = 0
-        self.vx = 0
+        self.vx = 0.1
         self.vy = 0
         self.ax = 0
         self.ay = 0

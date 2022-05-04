@@ -43,6 +43,8 @@ class CarModel:
         x3 - theta_e: heading error --- = path_angle - car_yaw_angle
         x4 - theta_e_dot: heading error rate --- = (theta_e_k - theta_e_km1) / self.Ts # theta_e_k = heading error at sample k AND theta_e_km1 = heading error at sample k - 1
         """
+        if Vx <= 0.1:
+            Vx = 0.1
 
         a11 = 0
         a12 = 1
