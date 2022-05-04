@@ -43,7 +43,7 @@ class LqrController(Node):
         # self.odom_subscriber
 
         # Get Reference Trajectory
-        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10, callback_group=self.path_thread)
+        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10, rclpy.qos.qos_profile_sensor_data, callback_group=self.path_thread)
         self.path_subscriber
 
         # Sensor measurements
