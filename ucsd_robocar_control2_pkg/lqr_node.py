@@ -38,12 +38,6 @@ class LqrController(Node):
         self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
         self.path_subscriber
 
-        # Controller modules
-        self.car_model = CarModel()
-        self.lqr_calc = LQRDesign(self.car_model)
-        self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
-        self.state_measurement = self.x0
-
         # Sensor measurements
         self.x = 0
         self.y = 0
@@ -59,6 +53,14 @@ class LqrController(Node):
         self.ax = 0
         self.ay = 0
         self.az = 0
+
+
+        # Controller modules
+        self.car_model = CarModel()
+        self.lqr_calc = LQRDesign(self.car_model)
+        self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
+        self.state_measurement = self.x0
+        self.sys = self.car_model.build_error_model(self.vx)
 
         # Path coordinates
         self.x_path = []
@@ -206,7 +208,7 @@ class LqrController(Node):
         # self.K2=K_mat[1]
         # self.K3=K_mat[2]
         # self.K4=K_mat[3]
-        K = self.lqr_calc.compute_single_gain_sample(sys)
+        K = self.lqr_calc.compute_single_gain_sample(self.sys)
         return K
 
     def update_states(self):
@@ -237,7 +239,7 @@ class LqrController(Node):
         """
 
         # Update Car model LTV system --- A(Vx)
-        sys = self.car_model.build_error_model(self.vx)
+        self.sys = self.car_model.build_error_model(self.vx)
 
         # get updated gains
         K = self.update_gains()
