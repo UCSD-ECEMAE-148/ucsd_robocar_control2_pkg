@@ -217,8 +217,17 @@ class LqrController(Node):
         Py2 = self.y_path[efa_mag2_index]
         delta_x = Px2 - Px1
         delta_y = Py2 - Py1
+        path_slope = delta_y / delta_x
+        path_intercept = Py1 - path_slope * Px1
+
         R_x = self.x - Px1
         R_y = self.y - Py1
+        car_slope = -1 / path_slope
+        car_intercept = self.y - car_slope * self.x
+        ecg_x = (path_intercept - car_intercept) / (car_slope - path_slope)
+        ecg_y = path_slope * ecg_x + path_intercept
+        ecg_r = np.power(np.power((self.x - ecg_x),2) + np.power((self.y - ecg_y), 2), 0.5)
+
         r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
         e_cg = (R_y * delta_x - R_x * delta_y) / r_2
         e_cg_sign = np.sign(R_y/R_x)
