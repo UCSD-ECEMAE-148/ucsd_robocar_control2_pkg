@@ -147,7 +147,7 @@ class LqrController(Node):
 
     def odom_measurement(self, odom_data):
         # TODO: what is frequency of data coming in?
-        
+
         # car position
         self.x_buffer = odom_data.pose.pose.position.x
         self.y_buffer = odom_data.pose.pose.position.y
@@ -182,12 +182,10 @@ class LqrController(Node):
         # self.get_logger().info(f"Updating POSE (x): ({self.x})")
 
     def set_path(self, path_data):
-        # self.get_logger().info("Updating PATH")
-        # print(path_data.poses)
-
         # TODO: Currently not working with Lidar Nav
-        # FIXME: confirm coordinate axes
+
         # path orientation 
+        # FIXME: confirm coordinate axes
         # quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
         #               path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
         # euler = euler_from_quaternion(quaternion)
@@ -206,41 +204,39 @@ class LqrController(Node):
 
     def get_cross_track_error(self):
         # self.get_logger().info("Updating CROSS-TRACK-ERROR")
-        efa_x = self.x_path - self.x
-        efa_y = self.y_path - self.y
-        efa_mag = np.power(np.power(efa_x,2) + np.power(efa_y, 2), 0.5)
-        efa_mag1, efa_mag2 = np.partition(efa_mag, 1)[0:2]
-        efa_mag1_index = np.argwhere(efa_mag == efa_mag1)[0][0]
-        efa_mag2_index = np.argwhere(efa_mag == efa_mag2)[0][0]
-        Px1 = self.x_path[efa_mag1_index]
-        Px2 = self.x_path[efa_mag2_index]
-        Py1 = self.y_path[efa_mag1_index]
-        Py2 = self.y_path[efa_mag2_index]
+        
+        # find 2 closest points in path with car
+        error_x = self.x_path - self.x
+        error_y = self.y_path - self.y
+        error_mag = np.power(np.power(error_x,2) + np.power(error_y, 2), 0.5)
+        error_mag1, error_mag2 = np.partition(error_mag, 1)[0:2]
+        error_mag1_index = np.argwhere(error_mag == error_mag1)[0][0]
+        error_mag2_index = np.argwhere(error_mag == error_mag2)[0][0]
+        Px1 = self.x_path[error_mag1_index]
+        Px2 = self.x_path[error_mag2_index]
+        Py1 = self.y_path[error_mag1_index]
+        Py2 = self.y_path[error_mag2_index]
+        
+        # create line extrapolations to determine cross-track error
+        # (threshold added to account for zero/infinite slopes)
+        
+        # path line
         delta_x = Px2 - Px1 + self.line_error_threshold
         delta_y = Py2 - Py1 + self.line_error_threshold
-
-        # R_x = self.x - Px1
-        # R_y = self.y - Py1
-        # r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
-        # e_cg = (R_y * delta_x - R_x * delta_y) / r_2
-        # e_cg_sign = np.sign(R_y/R_x)
-        # e_cg = e_cg_sign * efa_mag1
-        
+        theta_path = np.arctan(delta_y, delta_x)
         path_slope = delta_y / delta_x
-        car_slope = -1 / path_slope
-
         path_intercept = Py1 - path_slope * Px1
-        car_intercept = self.y - car_slope * self.x
         
+        # car line
+        car_slope = -1 / path_slope
+        car_intercept = self.y - car_slope * self.x
         ecg_x = (path_intercept - car_intercept) / (car_slope - path_slope)
         ecg_y = car_slope * ecg_x + car_intercept
 
+        # get actual cross-track error distance and use sign of slope to determine direction
         ecg_r = np.power(np.power((self.x - ecg_x),2) + np.power((self.y - ecg_y), 2), 0.5)
         e_cg_sign = np.sign(car_slope)
         e_cg = e_cg_sign * ecg_r
-        theta_path = np.arctan(delta_y, delta_x)
-        # self.get_logger().info(f"get_cross_track_error: e_cg, efa_mag1, efa_mag1_index: {e_cg} {efa_mag1}, {efa_mag1_index}")
-        # self.get_logger().info(f"get_cross_track_error (delta_x, delta_y, R_x, R_y, r_2, e_cg): {delta_x}, {delta_y}, {R_x}, {R_y}, {r_2}, {e_cg}")
         return e_cg, theta_path
 
     def get_latest_measurements(self):
@@ -263,7 +259,7 @@ class LqrController(Node):
         # self.get_logger().info("Updating STATES")
         theta_e_km1 = self.state_measurement[2][0]
         e_cg, theta_path = self.get_cross_track_error()
-        theta_e_k = theta_path - self.yaw  # Path needs to be in reference with car not map (local path)
+        theta_e_k = theta_path - self.yaw
         self.state_measurement[0][0] = e_cg
         self.state_measurement[1][0] = self.vy + self.vx * math.sin(theta_e_k)
         self.state_measurement[2][0] = theta_e_k
