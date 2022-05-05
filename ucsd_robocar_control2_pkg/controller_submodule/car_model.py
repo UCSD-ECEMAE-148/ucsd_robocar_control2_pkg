@@ -12,12 +12,12 @@ class CarModel:
         self.Ts = 0.01
         self.mu = 0.01  # FIXME coeff of friction of driving surface
         self.g = 9.81  # gravity acceleration
-        self.m = 630  # FIXME total mass (kg)
+        self.m = 5  # FIXME total mass (kg)
         self.mf = self.m * 0.42  # FIXME mass on front axel
         self.mr = self.m * 0.58  # FIXME mass on rear axel
-        self.L = 2.9718  # FIXME wheel base (meters)
-        self.cf = 2 * 8E4  # FIXME front tire cornering stiffness
-        self.cr = 2 * 8E4  # FIXME rear tire cornering stiffness
+        self.L = 0.325  # FIXME wheel base (meters)
+        self.cf = 6.0  # FIXME front tire cornering stiffness
+        self.cr = 18.0  # FIXME rear tire cornering stiffness
         self.Lf = self.L * (1 - self.mf / self.m)  # distance from CG to front axel
         self.Lr = self.L * (1 - self.mr / self.m)  # distance from CG to rear axel
         self.Iz = self.Lf * self.Lr * (self.mf + self.mr)  # moment of inertia

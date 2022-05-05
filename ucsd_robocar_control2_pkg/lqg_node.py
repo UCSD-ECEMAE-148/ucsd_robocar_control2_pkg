@@ -194,7 +194,7 @@ class LqgController(Node):
         # path coordinates (GLOBAL)
         self.x_path = path_data.poses[0].pose.position.x
         self.y_path = path_data.poses[0].pose.position.y
-        self.z_path = path_data.poses[0].pose.position.z
+        self.theta_path = np.arctan(self.y_path, self.x_path)
 
     def calc_cross_track_error(self):
         efa_x = self.x_path - self.x
@@ -223,7 +223,7 @@ class LqgController(Node):
         pose_error_y = self.y - self.y_path[0]
         theta_e_km1 = self.state_measurement[0][2]
         e_cg, e_cg_index = self.calc_cross_track_error()
-        theta_e_k = self.theta_p[e_cg_index] - self.yaw_imu
+        theta_e_k = self.theta_path[e_cg_index] - self.yaw_imu
         self.state_measurement[0][0] = e_cg
         self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
         self.state_measurement[0][2] = theta_e_k

@@ -3,6 +3,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from .car_model import CarModel
+# from car_model import CarModel
 
 
 class LQRDesign:
@@ -65,7 +66,12 @@ def lqr_example():
                       [5.64647673],
                       [1.21848635],
                       [1.79247224]])
-
+    
+    xy_hat = np.array([[1.24059389],
+                      [5.64647673],
+                      [1.21848635],
+                      [1.79247224]])
+    xy_hat[:] = 0
     K_mat_shape = K_mat.shape
     print(f"\nmy_sys: {my_sys}"
           f"\nnum_states: {my_sys.A.shape[0]}"
@@ -78,7 +84,14 @@ def lqr_example():
           f"\nK_s.flat[0]: {K_s[0]}"
           f"\nKs dot x: {np.dot(K_s, x_hat.flat)}"
           # f"\nKs dot x flat: {-np.dot(K_s[0], x_hat).flat[0]}"
-          f"\nK_mat: {K_mat}")
+          f"\nK_mat: {K_mat}"
+          f"\nx_hat: {x_hat}"
+          f"\nx_hat.shape: {x_hat.shape}"
+          f"\nxy_hat: {xy_hat[0][0]}"
+          f"\nxy_hat: {xy_hat[1][0]}"
+          f"\nxy_hat: {xy_hat[2][0]}"
+          f"\nxy_hat flat: {xy_hat}"
+          )
     try:
         for K in range(0, K_mat_shape[1]):
             plt.subplot(2, 2, K + 1)

@@ -5,20 +5,22 @@ from rclpy.node import Node
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32, Float32MultiArray
-from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
+from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
 from nav_msgs.msg import Path, Odometry
 from sensor_msgs.msg import Imu
+from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from .controller_submodule.lqr_calculator import LQRDesign
 from .controller_submodule.car_model import CarModel
 import numpy as np
+import math
 
 NODE_NAME = 'lqr_node'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
 
-POSE_TOPIC_NAME = '/pose'
-PATH_TOPIC_NAME = '/global_trajectory'
-IMU_TOPIC_NAME = '/razor/imu'
-ODOM_TOPIC_NAME = '/odom'
+# PATH_TOPIC_NAME = '/global_trajectory'
+# ODOM_TOPIC_NAME = '/odom'
+POSE_TOPIC_NAME = '/slam_out_pose'
+PATH_TOPIC_NAME = '/trajectory'
 
 class LqrController(Node):
     def __init__(self):
@@ -27,7 +29,7 @@ class LqrController(Node):
         # self.controller_thread = MutuallyExclusiveCallbackGroup()
         self.path_thread = MutuallyExclusiveCallbackGroup()
         # self.odom_thread = MutuallyExclusiveCallbackGroup()
-        # self.pose_thread = MutuallyExclusiveCallbackGroup()
+        self.pose_thread = MutuallyExclusiveCallbackGroup()
 
         self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
         self.twist_cmd = Twist()
@@ -35,8 +37,8 @@ class LqrController(Node):
         ### Get sensor measurements ###
         #
         # Get GPS/Lidar measurements
-        # self.pose_subscriber = self.create_subscription(PoseWithCovarianceStamped, POSE_TOPIC_NAME, self.pose_measurement, 10, callback_group=self.pose_thread)
-        # self.pose_subscriber
+        self.pose_subscriber = self.create_subscription(PoseStamped, POSE_TOPIC_NAME, self.pose_measurement, 10, callback_group=self.pose_thread)
+        self.pose_subscriber
 
         # # Get Odometry measurements
         # self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10, callback_group=self.odom_thread)
@@ -133,11 +135,14 @@ class LqrController(Node):
             f'\nmin_throttle: {self.min_throttle}'
             f'\nmax_right_steering: {self.max_right_steering}'
             f'\nmax_left_steering: {self.max_left_steering}'
+            f'\nself.state_measurement: {self.state_measurement}'
+            f'\ntype(self.state_measurement): {type(self.state_measurement)}'
+            f'\nshape(self.state_measurement): {self.state_measurement.shape}'
         )
 
         # Call controller
-        self.Ts = 1/100  # contoller publish frequency (Hz)
-        # self.create_timer(self.Ts, self.controller)
+        self.Ts = 0.01  # contoller sample time
+        self.create_timer(self.Ts, self.controller)
 
     def odom_measurement(self, odom_data):
         # position
@@ -158,15 +163,21 @@ class LqrController(Node):
         self.vy = odom_data.twist.twist.linear.y
 
     def pose_measurement(self, pose_data):
-        self.get_logger().info("Updating POSE")
-        
-
         # TODO: what is frequency of data coming in?
+        
+        # car orientation
         # FIXME: confirm coordinate axes
+        quaternion = (pose_data.pose.orientation.x, pose_data.pose.orientation.y, pose_data.pose.orientation.z, pose_data.pose.orientation.w)
+        euler = euler_from_quaternion(quaternion)
+        self.roll = euler[0]
+        self.pitch = euler[1]
+        self.yaw = euler[2]
+
         # car coordinates
-        self.x = pose_data.position.x
-        self.y = pose_data.position.y
-        self.z = pose_data.position.z
+        self.x = pose_data.pose.position.x
+        self.y = pose_data.pose.position.y
+        self.z = pose_data.pose.position.z
+        # self.get_logger().info(f"Updating POSE (x): ({self.x})")
 
     def set_path(self, path_data):
         # self.get_logger().info("Updating PATH")
@@ -184,20 +195,22 @@ class LqrController(Node):
 
         # path coordinates (GLOBAL)
         
-        self.x_path = [pose.pose.position.x for pose in path_data.poses]
-        self.y_path = path_data.poses[0].pose.position.y
-        self.z_path = path_data.poses[0].pose.position.z
+        self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
+        self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
+        self.theta_path = np.arctan(self.y_path, self.x_path)
         
         # self.get_logger().info(f"(x,y,z): ({self.x_path}, {self.y_path} ,{self.z_path})")
-        self.get_logger().info(f"(x): ({self.x_path})")
+        self.get_logger().info(f"shape PATH (x): ({self.x_path.shape})")
+        self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
 
     def calc_cross_track_error(self):
+        # self.get_logger().info("Updating CROSS-TRACK-ERROR")
         efa_x = self.x_path - self.x
         efa_y = self.y_path - self.y
-        efa_mag = np.power(np.power(efa_x,2) + np.power(efa_y, 2), 0.5);
+        efa_mag = np.power(np.power(efa_x,2) + np.power(efa_y, 2), 0.5)
         efa_mag1, efa_mag2 = np.partition(efa_mag, 1)[0:2]
-        efa_mag1_index = np.where(efa_mag == efa_mag1)
-        efa_mag2_index = np.where(efa_mag == efa_mag2)
+        efa_mag1_index = np.argwhere(efa_mag == efa_mag1)[0][0]
+        efa_mag2_index = np.argwhere(efa_mag == efa_mag2)[0][0]
         Px1 = self.x_path[efa_mag1_index]
         Px2 = self.x_path[efa_mag2_index]
         Py1 = self.y_path[efa_mag1_index]
@@ -208,7 +221,11 @@ class LqrController(Node):
         R_y = self.y - Py1
         r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
         e_cg = (R_y * delta_x - R_x * delta_y) / r_2
-        return e_cg, e_cg_index
+        e_cg_sign = np.sign(R_y/R_x)
+        e_cg = e_cg_sign * efa_mag1
+        # self.get_logger().info(f"calc_cross_track_error: e_cg, efa_mag1, efa_mag1_index: {e_cg} {efa_mag1}, {efa_mag1_index}")
+        # self.get_logger().info(f"calc_cross_track_error (delta_x, delta_y, R_x, R_y, r_2, e_cg): {delta_x}, {delta_y}, {R_x}, {R_y}, {r_2}, {e_cg}")
+        return e_cg, efa_mag1_index
 
     def update_gains(self):
         # self.get_logger().info("Updating GAINS")
@@ -226,18 +243,15 @@ class LqrController(Node):
         return K
 
     def update_states(self):
-        self.get_logger().info("Updating STATES")
-        delta_x_path = self.x_path[1] - self.x_path[0]
-        delta_y_path = self.y_path[1] - self.y_path[0]
-        pose_error_x = self.x - self.x_path[0]
-        pose_error_y = self.y - self.y_path[0]
-        theta_e_km1 = self.state_measurement[0][2]
+        # self.get_logger().info("Updating STATES")
+        theta_e_km1 = self.state_measurement[2][0]
         e_cg, e_cg_index = self.calc_cross_track_error()
-        theta_e_k = self.theta_p[e_cg_index] - self.yaw_imu  # Path needs to be in reference with car not map (local path)
+        theta_e_k = self.theta_path[e_cg_index] - self.yaw  # Path needs to be in reference with car not map (local path)
         self.state_measurement[0][0] = e_cg
-        self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
-        self.state_measurement[0][2] = theta_e_k
-        self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
+        self.state_measurement[1][0] = self.vy + self.vx * math.sin(theta_e_k)
+        self.state_measurement[2][0] = theta_e_k
+        self.state_measurement[3][0] = (theta_e_k - theta_e_km1) / self.Ts
+        self.get_logger().info(f"states: {self.state_measurement}")
 
     def controller(self):
         """
@@ -272,16 +286,22 @@ class LqrController(Node):
         steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
         throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
+        # self.get_logger().info(f"Updating DELTA: ({steering_float})")
+        # self.get_logger().info(f"State est (e_cg, e_cg_dot, e_yaw, e_yaw_dot): ({self.state_measurement[0][0]}, {self.state_measurement[0][1]}, {self.state_measurement[0][2]}, {self.state_measurement[0][3]})")
+        
         # Publish values
         try:
             # publish control signals
-            self.twist_cmd.angular.z=steering_float
-            self.twist_cmd.linear.x=throttle_float
+            self.twist_cmd.angular.z = steering_float
+            self.twist_cmd.linear.x = throttle_float
             self.twist_publisher.publish(self.twist_cmd)
 
         except KeyboardInterrupt:
             self.twist_cmd.linear.x=self.zero_throttle
             self.twist_publisher.publish(self.twist_cmd)
+
+        # Update States
+        self.update_states()
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound == None:
@@ -299,7 +319,7 @@ def main(args=None):
     rclpy.init(args=args)
     lqr_publisher=LqrController()
     try:
-        executor = MultiThreadedExecutor(num_threads=1)
+        executor = MultiThreadedExecutor(num_threads=3)
         executor.add_node(lqr_publisher)
         try:
             executor.spin()
