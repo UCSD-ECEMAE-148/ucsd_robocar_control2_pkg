@@ -79,6 +79,7 @@ class LqrController(Node):
         self.roll_path = []
         self.pitch_path = []
         self.yaw_path = []
+        self.line_error_threshold = 0.001 # (m)
 
         # Calculated states
         self.ecg = 0  # cross-track error
@@ -145,22 +146,24 @@ class LqrController(Node):
         self.create_timer(self.Ts, self.controller)
 
     def odom_measurement(self, odom_data):
-        # position
-        self.x = odom_data.pose.pose.position.x
-        self.y = odom_data.pose.pose.position.y
-        self.z = odom_data.pose.pose.position.z
+        # TODO: what is frequency of data coming in?
+        
+        # car position
+        self.x_buffer = odom_data.pose.pose.position.x
+        self.y_buffer = odom_data.pose.pose.position.y
+        self.z_buffer = odom_data.pose.pose.position.z
 
+        # car orientation
         # FIXME: confirm coordinate axes
-        # orientation
         quaternion = (odom_data.orientation.x, odom_data.orientation.y, odom_data.orientation.z, odom_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.roll = euler[0]
-        self.pitch = euler[1]
-        self.yaw = euler[2]
+        self.roll_buffer = euler[0]
+        self.pitch_buffer = euler[1]
+        self.yaw_buffer = euler[2]
 
-        # velocity
-        self.vx = odom_data.twist.twist.linear.x
-        self.vy = odom_data.twist.twist.linear.y
+        # car velocity
+        self.vx_buffer = odom_data.twist.twist.linear.x
+        self.vy_buffer = odom_data.twist.twist.linear.y
 
     def pose_measurement(self, pose_data):
         # TODO: what is frequency of data coming in?
@@ -169,14 +172,13 @@ class LqrController(Node):
         # FIXME: confirm coordinate axes
         quaternion = (pose_data.pose.orientation.x, pose_data.pose.orientation.y, pose_data.pose.orientation.z, pose_data.pose.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.roll = euler[0]
-        self.pitch = euler[1]
-        self.yaw = euler[2]
+        self.roll_buffer = euler[0]
+        self.pitch_buffer = euler[1]
+        self.yaw_buffer = euler[2]
 
         # car coordinates
-        self.x = pose_data.pose.position.x
-        self.y = pose_data.pose.position.y
-        self.z = pose_data.pose.position.z
+        self.x_buffer = pose_data.pose.position.x
+        self.y_buffer = pose_data.pose.position.y
         # self.get_logger().info(f"Updating POSE (x): ({self.x})")
 
     def set_path(self, path_data):
@@ -194,16 +196,15 @@ class LqrController(Node):
         # self.yaw_path = euler[2]
 
         # path coordinates (GLOBAL)
-        
         self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
         self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
-        self.theta_path = np.arctan(self.y_path, self.x_path)
+        # self.theta_path = np.arctan(self.y_path, self.x_path)
         
         # self.get_logger().info(f"(x,y,z): ({self.x_path}, {self.y_path} ,{self.z_path})")
-        self.get_logger().info(f"shape PATH (x): ({self.x_path.shape})")
-        self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
+        # self.get_logger().info(f"shape PATH (x): ({self.x_path.shape})")
+        # self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
 
-    def calc_cross_track_error(self):
+    def get_cross_track_error(self):
         # self.get_logger().info("Updating CROSS-TRACK-ERROR")
         efa_x = self.x_path - self.x
         efa_y = self.y_path - self.y
@@ -215,47 +216,54 @@ class LqrController(Node):
         Px2 = self.x_path[efa_mag2_index]
         Py1 = self.y_path[efa_mag1_index]
         Py2 = self.y_path[efa_mag2_index]
-        delta_x = Px2 - Px1
-        delta_y = Py2 - Py1
+        delta_x = Px2 - Px1 + self.line_error_threshold
+        delta_y = Py2 - Py1 + self.line_error_threshold
+
+        # R_x = self.x - Px1
+        # R_y = self.y - Py1
+        # r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
+        # e_cg = (R_y * delta_x - R_x * delta_y) / r_2
+        # e_cg_sign = np.sign(R_y/R_x)
+        # e_cg = e_cg_sign * efa_mag1
+        
         path_slope = delta_y / delta_x
-        path_intercept = Py1 - path_slope * Px1
-
-        R_x = self.x - Px1
-        R_y = self.y - Py1
         car_slope = -1 / path_slope
-        car_intercept = self.y - car_slope * self.x
-        ecg_x = (path_intercept - car_intercept) / (car_slope - path_slope)
-        ecg_y = path_slope * ecg_x + path_intercept
-        ecg_r = np.power(np.power((self.x - ecg_x),2) + np.power((self.y - ecg_y), 2), 0.5)
 
-        r_2 = np.power(delta_x, 2) + np.power(delta_y, 2)
-        e_cg = (R_y * delta_x - R_x * delta_y) / r_2
-        e_cg_sign = np.sign(R_y/R_x)
-        e_cg = e_cg_sign * efa_mag1
-        # self.get_logger().info(f"calc_cross_track_error: e_cg, efa_mag1, efa_mag1_index: {e_cg} {efa_mag1}, {efa_mag1_index}")
-        # self.get_logger().info(f"calc_cross_track_error (delta_x, delta_y, R_x, R_y, r_2, e_cg): {delta_x}, {delta_y}, {R_x}, {R_y}, {r_2}, {e_cg}")
-        return e_cg, efa_mag1_index
+        path_intercept = Py1 - path_slope * Px1
+        car_intercept = self.y - car_slope * self.x
+        
+        ecg_x = (path_intercept - car_intercept) / (car_slope - path_slope)
+        ecg_y = car_slope * ecg_x + car_intercept
+
+        ecg_r = np.power(np.power((self.x - ecg_x),2) + np.power((self.y - ecg_y), 2), 0.5)
+        e_cg_sign = np.sign(car_slope)
+        e_cg = e_cg_sign * ecg_r
+        theta_path = np.arctan(delta_y, delta_x)
+        # self.get_logger().info(f"get_cross_track_error: e_cg, efa_mag1, efa_mag1_index: {e_cg} {efa_mag1}, {efa_mag1_index}")
+        # self.get_logger().info(f"get_cross_track_error (delta_x, delta_y, R_x, R_y, r_2, e_cg): {delta_x}, {delta_y}, {R_x}, {R_y}, {r_2}, {e_cg}")
+        return e_cg, theta_path
+
+    def get_latest_measurements(self):
+        # car orientation
+        self.yaw = self.yaw_buffer
+        
+        # car coordinates
+        self.x = self.x_buffer
+        self.y = self.y_buffer
+
+        # car speed
+        self.vx = self.vx_buffer
+        self.vy = self.vy_buffer
 
     def update_gains(self):
-        # self.get_logger().info("Updating GAINS")
-        # K_mat=[]
-        # # put all coeff for each gain function into matrix with dim: 4x3
-        # coeff_mat=[self.k1_coeff, self.k2_coeff, self.k3_coeff, self.k4_coeff]
-        # for coeff in coeff_mat:
-        #     K = self.calc_gain_power_function(coeff)
-        #     K_mat.append(K)
-        # self.K1=K_mat[0]
-        # self.K2=K_mat[1]
-        # self.K3=K_mat[2]
-        # self.K4=K_mat[3]
         K = self.lqr_calc.compute_single_gain_sample(self.sys)
         return K
 
     def update_states(self):
         # self.get_logger().info("Updating STATES")
         theta_e_km1 = self.state_measurement[2][0]
-        e_cg, e_cg_index = self.calc_cross_track_error()
-        theta_e_k = self.theta_path[e_cg_index] - self.yaw  # Path needs to be in reference with car not map (local path)
+        e_cg, theta_path = self.get_cross_track_error()
+        theta_e_k = theta_path - self.yaw  # Path needs to be in reference with car not map (local path)
         self.state_measurement[0][0] = e_cg
         self.state_measurement[1][0] = self.vy + self.vx * math.sin(theta_e_k)
         self.state_measurement[2][0] = theta_e_k
@@ -265,9 +273,7 @@ class LqrController(Node):
     def controller(self):
         """
         Need:
-        -pose data and path data to calculate errors
-        OR
-        -previously calculated errors
+        -pose data and path data to calculate errors\
 
         ecg: cross-trackk error from center of gravity (cg)
         ecg_dot: cross-trackk error rate from cg
@@ -276,6 +282,7 @@ class LqrController(Node):
         """
 
         # Update Car model LTV system --- A(Vx)
+        self.get_latest_measurements()
         self.sys = self.car_model.build_error_model(self.vx)
 
         # get updated gains
@@ -284,7 +291,7 @@ class LqrController(Node):
         # Steering LQR
         steering_float_raw = -np.dot(K[0], self.state_measurement).flat[0]
 
-        # TODO: function of cross-track error (e_cg) or heading error (theta_e)??
+        # TODO: function of cross-track error (e_cg) or heading error (theta_e)?? --> steering angle!!
         # Throttle gain scheduling
         tracking_error = self.state_measurement[0][0]
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
