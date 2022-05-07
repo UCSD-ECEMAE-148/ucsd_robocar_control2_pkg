@@ -16,8 +16,8 @@ import numpy as np
 import math
 
 NODE_NAME = 'lqr_node'
-ACTUATOR_TOPIC_NAME = '/cmd_vel'
-ACTUATOR_TOPIC_NAME = '/vesc/high_level/ackermann_cmd_mux/output'
+# ACTUATOR_TOPIC_NAME = '/vesc/high_level/ackermann_cmd_mux/output'
+ACTUATOR_TOPIC_NAME = '/lqr_controller_test'
 
 # PATH_TOPIC_NAME = '/global_trajectory'
 # ODOM_TOPIC_NAME = '/odom'
@@ -54,18 +54,17 @@ class LqrController(Node):
         # Sensor measurements
         self.x = 0
         self.y = 0
-        self.z = 0
-        self.roll = 0
-        self.pitch = 0
         self.yaw = 0
-        self.roll_rate = 0
-        self.pitch_rate = 0
         self.yaw_rate = 0
         self.vx = 0.1
         self.vy = 0
-        self.ax = 0
-        self.ay = 0
-        self.az = 0
+
+        self.x_buffer = 0
+        self.y_buffer = 0
+        self.yaw_buffer = 0
+        self.yaw_rate_buffer = 0
+        self.vx_buffer = 0.1
+        self.vy_buffer = 0
 
 
         # Controller modules
@@ -102,11 +101,11 @@ class LqrController(Node):
                 ('k3_coeff', [1.0, 1.0, 1.0]),
                 ('k4_coeff', [1.0, 1.0, 1.0]),
                 ('error_threshold', 0.15),
-                ('zero_throttle', 0.0),
-                ('max_throttle', 0.2),
-                ('min_throttle', 0.1),
-                ('max_right_steering', 1.0),
-                ('max_left_steering', -1.0)
+                ('zero_speed', 0.0),
+                ('max_speed', 5),
+                ('min_speed', 0.1),
+                ('max_right_steering', -0.4),
+                ('max_left_steering', 0.4)
             ])
 
         self.k1_gain=self.get_parameter('k1_gain').value
@@ -118,11 +117,11 @@ class LqrController(Node):
         self.k3_coeff=self.get_parameter('k3_coeff').value
         self.k4_coeff=self.get_parameter('k4_coeff').value
         self.error_threshold=self.get_parameter('error_threshold').value  # between [0,1]
-        self.zero_throttle=self.get_parameter('zero_throttle').value  # between [-1,1] but should be around 0
-        self.max_throttle=self.get_parameter('max_throttle').value  # between [-1,1]
-        self.min_throttle=self.get_parameter('min_throttle').value  # between [-1,1]
-        self.max_right_steering=self.get_parameter('max_right_steering').value  # between [-1,1]
-        self.max_left_steering=self.get_parameter('max_left_steering').value  # between [-1,1]
+        self.zero_speed=self.get_parameter('zero_speed').value  # should be around 0
+        self.max_speed=self.get_parameter('max_speed').value  # between [0,5] m/s
+        self.min_speed=self.get_parameter('min_speed').value  # between [0,5] m/s 
+        self.max_right_steering=self.get_parameter('max_right_steering').value  # negative(max_left) 
+        self.max_left_steering=self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
 
         self.get_logger().info(
             f'\nk1_gain: {self.k1_gain}'
@@ -134,9 +133,9 @@ class LqrController(Node):
             f'\nk3_coeff: {self.k3_coeff}'
             f'\nk4_coeff: {self.k4_coeff}'
             f'\nerror_threshold: {self.error_threshold}'
-            f'\nzero_throttle: {self.zero_throttle}'
-            f'\nmax_throttle: {self.max_throttle}'
-            f'\nmin_throttle: {self.min_throttle}'
+            f'\nzero_speed: {self.zero_speed}'
+            f'\nmax_speed: {self.max_speed}'
+            f'\nmin_speed: {self.min_speed}'
             f'\nmax_right_steering: {self.max_right_steering}'
             f'\nmax_left_steering: {self.max_left_steering}'
             f'\nself.state_measurement: {self.state_measurement}'
@@ -154,14 +153,11 @@ class LqrController(Node):
         # car position
         self.x_buffer = odom_data.pose.pose.position.x
         self.y_buffer = odom_data.pose.pose.position.y
-        self.z_buffer = odom_data.pose.pose.position.z
 
         # car orientation
         # FIXME: confirm coordinate axes
         quaternion = (odom_data.orientation.x, odom_data.orientation.y, odom_data.orientation.z, odom_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.roll_buffer = euler[0]
-        self.pitch_buffer = euler[1]
         self.yaw_buffer = euler[2]
 
         # car velocity
@@ -175,8 +171,6 @@ class LqrController(Node):
         # FIXME: confirm coordinate axes
         quaternion = (pose_data.pose.orientation.x, pose_data.pose.orientation.y, pose_data.pose.orientation.z, pose_data.pose.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.roll_buffer = euler[0]
-        self.pitch_buffer = euler[1]
         self.yaw_buffer = euler[2]
 
         # car coordinates
@@ -192,17 +186,11 @@ class LqrController(Node):
         # quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
         #               path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
         # euler = euler_from_quaternion(quaternion)
-        # self.roll_path = euler[0]
-        # self.pitch_path = euler[1]
         # self.yaw_path = euler[2]
 
         # path coordinates (GLOBAL)
         self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
         self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
-        # self.theta_path = np.arctan(self.y_path, self.x_path)
-        
-        # self.get_logger().info(f"(x,y,z): ({self.x_path}, {self.y_path} ,{self.z_path})")
-        # self.get_logger().info(f"shape PATH (x): ({self.x_path.shape})")
         # self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
 
     def get_cross_track_error(self):
@@ -302,12 +290,12 @@ class LqrController(Node):
 
         # Throttle gain scheduling
         tracking_error = self.state_measurement[0][0]
-        self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        speed_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
+        self.inf_throttle = self.min_speed - (self.min_speed - self.max_speed) / (1 - self.error_threshold)
+        speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
 
         # Clamp control inputs
         delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
-        speed = self.clamp(speed_raw, self.max_throttle, self.min_throttle)
+        speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         self.get_logger().info(f"Updating DELTA: ({delta})")
 
@@ -351,7 +339,7 @@ def main(args=None):
             lqr_publisher.destroy_node()
     except KeyboardInterrupt:
         lqr_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
-        lqr_publisher.twist_cmd.linear.x=lqr_publisher.zero_throttle
+        lqr_publisher.twist_cmd.linear.x=lqr_publisher.zero_speed
         lqr_publisher.twist_publisher.publish(lqr_publisher.twist_cmd)
         time.sleep(1)
         lqr_publisher.destroy_node()
