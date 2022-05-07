@@ -6,6 +6,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
+from ackermann_msgs.msg import AckermannDriveStamped, AckermannDrive
 from nav_msgs.msg import Path, Odometry
 from sensor_msgs.msg import Imu
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
@@ -16,6 +17,7 @@ import math
 
 NODE_NAME = 'lqr_node'
 ACTUATOR_TOPIC_NAME = '/cmd_vel'
+ACTUATOR_TOPIC_NAME = '/vesc/high_level/ackermann_cmd_mux/output'
 
 # PATH_TOPIC_NAME = '/global_trajectory'
 # ODOM_TOPIC_NAME = '/odom'
@@ -31,9 +33,10 @@ class LqrController(Node):
         # self.odom_thread = MutuallyExclusiveCallbackGroup()
         self.pose_thread = MutuallyExclusiveCallbackGroup()
 
-        self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
-        self.twist_cmd = Twist()
-
+        # Actuator control
+        self.drive_pub = rospy.Publisher(ACTUATOR_TOPIC_NAME, AckermannDriveStamped, queue_size=self.QUEUE_SIZE)
+        self.drive_cmd = AckermannDriveStamped()
+        
         ### Get sensor measurements ###
         #
         # Get GPS/Lidar measurements
@@ -269,12 +272,22 @@ class LqrController(Node):
     def controller(self):
         """
         Need:
-        -pose data and path data to calculate errors\
+        -pose data
+        -path data
+        -vx (measured longitudinal velocity)
 
-        ecg: cross-trackk error from center of gravity (cg)
-        ecg_dot: cross-trackk error rate from cg
-        theta_e: heading error
-        theta_e_dot: heading error rate
+        states:
+        -ecg (cross-trackk error from center of gravity (cg))
+        -ecg_dot (cross-trackk error rate from cg)
+        -theta_e (heading error)
+        -theta_e_dot (heading error rate)
+
+        inputs:
+        -delta (steering angle)
+
+        published message:
+        -steering_angle (radians)
+        -speed (m/s)
         """
 
         # Update Car model LTV system --- A(Vx)
@@ -285,32 +298,30 @@ class LqrController(Node):
         K = self.update_gains()
 
         # Steering LQR
-        steering_float_raw = -np.dot(K[0], self.state_measurement).flat[0]
+        delta_raw = -np.dot(K[0], self.state_measurement).flat[0]
 
-        # TODO: function of cross-track error (e_cg) or heading error (theta_e)?? --> steering angle!!
         # Throttle gain scheduling
         tracking_error = self.state_measurement[0][0]
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
+        speed_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
 
         # Clamp control inputs
-        # FIXME: need to convert to radians and m/s respectively 
-        steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
-        throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
+        delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
+        speed = self.clamp(speed_raw, self.max_throttle, self.min_throttle)
 
-        # self.get_logger().info(f"Updating DELTA: ({steering_float})")
-        # self.get_logger().info(f"State est (e_cg, e_cg_dot, e_yaw, e_yaw_dot): ({self.state_measurement[0][0]}, {self.state_measurement[0][1]}, {self.state_measurement[0][2]}, {self.state_measurement[0][3]})")
-        
+        self.get_logger().info(f"Updating DELTA: ({delta})")
+
         # Publish values
         try:
-            # publish control signals
-            self.twist_cmd.angular.z = steering_float
-            self.twist_cmd.linear.x = throttle_float
-            self.twist_publisher.publish(self.twist_cmd)
+            # publish drive control signal
+            self.drive_cmd.header = self.get_clock().now().to_msg()
+            self.drive_cmd.drive.speed = speed
+            self.drive_cmd.drive.steering_angle = delta
 
         except KeyboardInterrupt:
-            self.twist_cmd.linear.x=self.zero_throttle
-            self.twist_publisher.publish(self.twist_cmd)
+            self.drive_cmd.header = self.get_clock().now().to_msg()
+            self.drive_cmd.drive.speed = 0
+            self.drive_cmd.drive.steering_angle = 0
 
         # Update States
         self.update_states()
