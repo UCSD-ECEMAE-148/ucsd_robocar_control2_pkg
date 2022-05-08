@@ -9,8 +9,9 @@ from ament_index_python.packages import get_package_share_directory
 import os
 
 def generate_launch_description():
+    ctrl_pkg = 'ucsd_robocar_control2_pkg'
     joy_teleop_config = os.path.join(
-        get_package_share_directory('ucsd_robocar_nav2_pkg'),
+        get_package_share_directory(ctrl_pkg),
         'config',
         'f1tenth_joy_teleop.yaml'
     )
