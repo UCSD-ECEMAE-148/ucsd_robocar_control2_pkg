@@ -1,22 +1,31 @@
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Int32, Int32MultiArray
-from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32MultiArray, MultiArrayDimension, MultiArrayLayout
+from ackermann_msgs.msg import AckermannDriveStamped
 import time
 import os
+import numpy as np
 
 NODE_NAME = 'pid_node'
-ERROR_TOPIC_NAME = '/centroid'
-ACTUATOR_TOPIC_NAME = '/cmd_vel'
+ERROR_TOPIC_NAME = '/error'
+ACTUATOR_TOPIC_NAME = '/teleop'
 
 
 class PidController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
-        self.twist_cmd = Twist()
-        self.centroid_subscriber = self.create_subscription(Float32, ERROR_TOPIC_NAME, self.controller, 10)
-        self.centroid_subscriber
+        self.QUEUE_SIZE = 10
+
+        # Actuator control
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
+        self.drive_cmd = AckermannDriveStamped()
+
+        self.error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE)
+        self.error_subscriber
+
+        # setting up message structure for vesc-ackermann msg
+        self.current_time = self.get_clock().now().to_msg()
+        self.frame_id = 'base_link'
 
         # Default actuator values
         self.declare_parameters(
@@ -25,74 +34,117 @@ class PidController(Node):
                 ('Kp_steering', 1),
                 ('Ki_steering', 0),
                 ('Kd_steering', 0),
-                ('error_threshold', 0.15),
-                ('zero_throttle',0.0),
-                ('max_throttle', 0.2),
-                ('min_throttle', 0.1),
-                ('max_right_steering', 1.0),
-                ('max_left_steering', -1.0)
+                ('integral_max', 0),
+                ('upper_error_threshold', 0.15),
+                ('lower_error_threshold', 0.15),
+                ('zero_speed', 0.0),
+                ('max_speed', 5),
+                ('min_speed', 0.1),
+                ('max_right_steering', 0.4),
+                ('max_left_steering', -0.4)
             ])
-        self.Kp = self.get_parameter('Kp_steering').value # between [0,1]
-        self.Ki = self.get_parameter('Ki_steering').value # between [0,1]
-        self.Kd = self.get_parameter('Kd_steering').value # between [0,1]
-        self.error_threshold = self.get_parameter('error_threshold').value # between [0,1]
-        self.zero_throttle = self.get_parameter('zero_throttle').value # between [-1,1] but should be around 0
-        self.max_throttle = self.get_parameter('max_throttle').value # between [-1,1]
-        self.min_throttle = self.get_parameter('min_throttle').value # between [-1,1]
-        self.max_right_steering = self.get_parameter('max_right_steering').value # between [-1,1]
-        self.max_left_steering = self.get_parameter('max_left_steering').value # between [-1,1]
+        self.Kp = self.get_parameter('Kp_steering').value
+        self.Ki = self.get_parameter('Ki_steering').value
+        self.Kd = self.get_parameter('Kd_steering').value
+        self.integral_max = self.get_parameter('integral_max').value 
+        self.upper_error_threshold = self.get_parameter('upper_error_threshold').value # between [0,1]
+        self.lower_error_threshold = self.get_parameter('lower_error_threshold').value # between [0,1]
+        self.zero_speed=self.get_parameter('zero_speed').value  # should be around 0
+        self.max_speed=self.get_parameter('max_speed').value  # between [0,5] m/s
+        self.min_speed=self.get_parameter('min_speed').value  # between [0,5] m/s 
+        self.max_right_steering=self.get_parameter('max_right_steering').value  # negative(max_left) 
+        self.max_left_steering=self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
 
         # initializing PID control
-        self.Ts = float(1/20)
-        self.ek = 0 # current error
-        self.ek_1 = 0 # previous error
+        self.e_y_buffer = 0
+        self.e_x_buffer = 0
+        self.e_theta_buffer = 0
+        self.e_y = 0
+        self.e_y_1 = 0
+        self.e_x = 0
+        self.e_theta = 0
+
         self.proportional_error = 0 # proportional error term for steering
         self.derivative_error = 0 # derivative error term for steering
         self.integral_error = 0 # integral error term for steering
-        self.integral_max = 1E-8
         
         self.get_logger().info(
-            f'\nKp_steering: {self.Kp}'
-            f'\nKi_steering: {self.Ki}'
-            f'\nKd_steering: {self.Kd}'
-            f'\nerror_threshold: {self.error_threshold}'
-            f'\nzero_throttle: {self.zero_throttle}'
-            f'\nmax_throttle: {self.max_throttle}'
-            f'\nmin_throttle: {self.min_throttle}'
-            f'\nmax_right_steering: {self.max_right_steering}'
-            f'\nmax_left_steering: {self.max_left_steering}'
+            f'\n Kp_steering: {self.Kp}'
+            f'\n Ki_steering: {self.Ki}'
+            f'\n Kd_steering: {self.Kd}'
+            f'\n upper_error_threshold: {self.upper_error_threshold}'
+            f'\n lower_error_threshold: {self.lower_error_threshold}'
+            f'\n zero_speed: {self.zero_speed}'
+            f'\n max_speed: {self.max_speed}'
+            f'\n min_speed: {self.min_speed}'
+            f'\n max_right_steering: {self.max_right_steering}'
+            f'\n max_left_steering: {self.max_left_steering}'
         )
+        # Call controller
+        self.Ts = 0.01  # contoller sample time
+        self.create_timer(self.Ts, self.controller)
 
-    def controller(self, data):
-        # setting up PID control
-        self.ek = data.data
+    def error_measurement(self, error_data):
+        error_data_check = np.array([error_data.data[0], error_data.data[1], error_data.data[2]])
+        if not (np.isnan(error_data_check).any()):
+            self.e_y_buffer = error_data.data[0]
+            self.e_x_buffer = error_data.data[1]
+            self.e_theta_buffer = error_data.data[2]
 
-        # Throttle gain scheduling (function of error)
-        self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw = ((self.min_throttle - self.max_throttle)  / (1 - self.error_threshold)) * abs(self.ek) + self.inf_throttle
-        throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
+    def get_latest_measurements(self):
+        self.e_y = self.e_y_buffer
+        self.e_x = self.e_x_buffer
+        self.e_theta = self.e_theta_buffer
+        self.current_time = self.get_clock().now().to_msg()
+
+    def controller(self):
+        # Get latest measurement
+        self.get_latest_measurements()
 
         # Steering PID terms
-        self.proportional_error = self.Kp * self.ek
-        self.derivative_error = self.Kd * (self.ek - self.ek_1) / self.Ts
-        self.integral_error += self.Ki * self.ek * self.Ts
+        self.proportional_error = self.Kp * self.e_y
+        self.derivative_error = self.Kd * (self.e_y - self.e_y_1) / self.Ts
+        self.integral_error += self.Ki * self.e_y * self.Ts
         self.integral_error = self.clamp(self.integral_error, self.integral_max)
-        steering_float_raw = self.proportional_error + self.derivative_error + self.integral_error
-        steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        delta_raw = self.proportional_error + self.derivative_error + self.integral_error
+        # clamp values
+        delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
+
+        # Throttle gain scheduling (function of error)
+
+        self.upper_error_threshold 
+         
+        self.inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * self.upper_error_threshold
+        Kp_speed = ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * abs(delta) + self.inf_throttle
+        speed_raw = -Kp_speed * self.e_x
+        speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
+        
+        self.get_logger().info(f'\n'
+                               f'\n ex:{self.e_x}'
+                               f'\n ey:{self.e_y}'
+                               f'\n e_theta:{self.e_theta}'
+                               f'\n delta:{delta_raw}'
+                               f'\n speed:{speed_raw}'
+                               f'\n clamped delta:{delta}'
+                               f'\n clamped speed:{speed}'
+                               )
+        self.e_y_1 = self.e_y
 
         # Publish values
         try:
-            # publish control signals
-            self.twist_cmd.angular.z = steering_float
-            self.twist_cmd.linear.x = throttle_float
-            self.twist_publisher.publish(self.twist_cmd)
-
-            # shift current time and error values to previous values
-            self.ek_1 = self.ek
+            # publish drive control signal
+            self.drive_cmd.header.stamp = self.current_time
+            self.drive_cmd.header.frame_id = self.frame_id
+            self.drive_cmd.drive.speed = speed
+            self.drive_cmd.drive.steering_angle = -delta
+            self.drive_pub.publish(self.drive_cmd)
 
         except KeyboardInterrupt:
-            self.twist_cmd.linear.x = self.zero_throttle
-            self.twist_publisher.publish(self.twist_cmd)
+            self.drive_cmd.header.stamp = self.current_time
+            self.drive_cmd.header.frame_id = self.frame_id
+            self.drive_cmd.drive.speed = 0
+            self.drive_cmd.drive.steering_angle = 0
+            self.drive_pub.publish(self.drive_cmd)
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound==None:
@@ -115,8 +167,11 @@ def main(args=None):
         rclpy.shutdown()
     except KeyboardInterrupt:
         pid_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
-        pid_publisher.twist_cmd.linear.x = pid_publisher.zero_throttle
-        pid_publisher.twist_publisher.publish(pid_publisher.twist_cmd)
+        pid_publisher.drive_cmd.header.stamp = pid_publisher.current_time
+        pid_publisher.drive_cmd.header.frame_id = pid_publisher.frame_id
+        pid_publisher.drive_cmd.drive.speed = 0.0
+        pid_publisher.drive_cmd.drive.steering_angle = 0.0
+        pid_publisher.drive_pub.publish(pid_publisher.drive_cmd)
         time.sleep(1)
         pid_publisher.destroy_node()
         rclpy.shutdown()
