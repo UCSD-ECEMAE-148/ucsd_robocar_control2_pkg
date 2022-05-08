@@ -259,10 +259,11 @@ class LqrController(Node):
         self.y = self.y_buffer
 
         # car speed
-        self.vx = self.vx_buffer
+        # self.vx = self.vx_buffer
         self.vy = self.vy_buffer
 
         # manual control
+        self.vx = self.joy_speed_buffer
         self.joy_speed = self.joy_speed_buffer 
         self.joy_steering = self.joy_steering_buffer
 
