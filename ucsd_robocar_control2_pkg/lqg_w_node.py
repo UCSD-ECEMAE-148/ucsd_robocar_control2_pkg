@@ -5,7 +5,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
-from nav_msgs.msg import Path
+from nav_msgs.msg import Path, Odometry
 from sensor_msgs.msg import Imu
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from .controller_submodule.lqr_calculator import LQRDesign
@@ -40,7 +40,7 @@ class LqgController(Node):
         self.pose_subscriber
 
         # Get Odometry measurements
-        self.odom_subscriber = self.create_subscription(Odom, ODOM_TOPIC_NAME, self.odom_measurement, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10)
         self.odom_subscriber
 
         # Get Reference Trajectory
@@ -63,23 +63,33 @@ class LqgController(Node):
         self.state_measurement = self.x0
         self.state_est = self.x0
 
-        # Sensor measurements
+        # Filtered states
         self.x = 0
         self.y = 0
         self.yaw = 0
         self.yaw_rate = 0
         self.vx = 0
         self.vy = 0
-        self.ax = 0
-        self.ay = 0
 
-        # buffer
-        self.x_buffer = 0
-        self.y_buffer = 0
-        self.yaw_buffer = 0
-        self.yaw_rate_buffer = 0
-        self.vx_buffer = 0.1
-        self.vy_buffer = 0
+        # Sensor measurements Buffer
+        # Lidar
+        self.x_lidar_buffer = 0
+        self.y_lidar_buffer = 0
+        self.yaw_lidar_buffer = 0
+
+        # IMU
+        self.yaw_imu_buffer = 0
+        self.yaw_rate_imu_buffer = 0
+
+        # VESC
+        self.x_vesc_buffer = 0
+        self.y_vesc_buffer = 0
+        self.yaw_vesc_buffer = 0
+        self.yaw_rate_vesc_buffer = 0
+        self.vx_vesc_buffer = 0.1
+        self.vy_vesc_buffer = 0
+
+        # JOY
         self.joy_speed_buffer = 0
         self.joy_steering_buffer = 0
 
@@ -128,72 +138,46 @@ class LqgController(Node):
         self.create_timer(self.Ts, self.controller)
 
     def imu_measurement(self, imu_data):
-        self.get_logger().info("Updating IMU")
-
-        # TODO: what is frequency of data coming in?
-        
-        # FIXME: confirm coordinate axes
-        # orientation
+        # self.get_logger().info("Updating IMU")
         quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.yaw_imu = euler[2]
-
-        # angular velocity
-        self.yaw_rate = imu_data.angular_velocity.z
-
-        # linear acceleration
-        self.ax = imu_data.linear_acceleration.x
-        self.ay = imu_data.linear_acceleration.y
-
-        # linear velocity
-        self.vx = self.vx + (self.ax * self.Ts)
-        self.vy = self.vy + (self.ay * self.Ts)
+        
+        self.yaw_imu_buffer = euler[2]
+        self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
 
     def odom_measurement(self, odom_data):
-        # TODO: what is frequency of data coming in?
-
         # car position
-        self.x_buffer = odom_data.pose.pose.position.x
-        self.y_buffer = odom_data.pose.pose.position.y
+        self.x_vesc_buffer = odom_data.pose.pose.position.x
+        self.y_vesc_buffer = odom_data.pose.pose.position.y
+
+        # car linear velocity
+        self.vx_vesc_buffer = odom_data.twist.twist.linear.x
+        self.vy_vesc_buffer = odom_data.twist.twist.linear.y
 
         # car orientation
-        # FIXME: confirm coordinate axes
         quaternion = (odom_data.orientation.x, odom_data.orientation.y, odom_data.orientation.z, odom_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.yaw_buffer = euler[2]
+        self.yaw_vesc_buffer = euler[2]
 
-        # car velocity
-        self.vx_buffer = odom_data.twist.twist.linear.x
-        self.vy_buffer = odom_data.twist.twist.linear.y
+        # car angular velocity
+        self.yaw_rate_vesc_buffer = odom_data.twist.twist.angular.z
 
     def pose_measurement(self, pose_data):
-        # TODO: what is frequency of data coming in?
-        
         # car orientation
-        # FIXME: confirm coordinate axes
         quaternion = (pose_data.pose.orientation.x, pose_data.pose.orientation.y, pose_data.pose.orientation.z, pose_data.pose.orientation.w)
         euler = euler_from_quaternion(quaternion)
-        self.yaw_buffer = euler[2]
+        self.yaw_lidar_buffer = euler[2]
 
-        # car coordinates
-        self.x_buffer = pose_data.pose.position.x
-        self.y_buffer = pose_data.pose.position.y
+        # car position
+        self.x_lidar_buffer = pose_data.pose.position.x
+        self.y_lidar_buffer = pose_data.pose.position.y
         # self.get_logger().info(f"Updating POSE (x): ({self.x})")
 
     def set_path(self, path_data):
-        # TODO: Currently not working with Lidar Nav
-
-        # path orientation 
-        # FIXME: confirm coordinate axes
-        # quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
-        #               path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
-        # euler = euler_from_quaternion(quaternion)
-        # self.yaw_path = euler[2]
-
         # path coordinates (GLOBAL)
         self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
         self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
-        self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
+        # self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
 
     def set_joy_command(self, joy_data):
         self.joy_speed_buffer = joy_data.drive.speed
@@ -239,18 +223,20 @@ class LqgController(Node):
 
     def get_latest_measurements(self):
         # car orientation
-        self.yaw = self.yaw_buffer
+        self.yaw = float(np.mean([self.yaw_lidar_buffer, self.yaw_imu_buffer, self.yaw_vesc_buffer]))
+
+        # car angular speed
+        self.yaw_rate = float(np.mean([self.yaw_rate_imu_buffer, self.yaw_rate_vesc_buffer]))
         
         # car coordinates
-        self.x = self.x_buffer
-        self.y = self.y_buffer
+        self.x = float(np.mean([self.x_lidar_buffer, self.x_vesc_buffer]))
+        self.y = float(np.mean([self.y_lidar_buffer, self.y_vesc_buffer]))
 
-        # car speed
-        # self.vx = self.vx_buffer
-        self.vy = self.vy_buffer
+        # car linear speed
+        self.vx = self.vx_vesc_buffer
+        self.vy = self.vy_vesc_buffer
 
         # manual control
-        self.vx = self.joy_speed_buffer
         self.joy_speed = self.joy_speed_buffer 
         self.joy_steering = self.joy_steering_buffer
 
@@ -263,18 +249,15 @@ class LqgController(Node):
         return K
 
     def update_states(self):
-        self.get_logger().info("Updating STATES")
-        delta_x_path = self.x_path[1] - self.x_path[0]
-        delta_y_path = self.y_path[1] - self.y_path[0]
-        pose_error_x = self.x - self.x_path[0]
-        pose_error_y = self.y - self.y_path[0]
-        theta_e_km1 = self.state_measurement[0][2]
-        e_cg, e_cg_index = self.calc_cross_track_error()
-        theta_e_k = self.theta_path[e_cg_index] - self.yaw_imu
+        # self.get_logger().info("Updating STATES")
+        theta_e_km1 = self.state_measurement[2][0]
+        e_cg, theta_path = self.get_cross_track_error()
+        theta_e_k = theta_path - self.yaw
         self.state_measurement[0][0] = e_cg
-        self.state_measurement[0][1] = self.vy + self.vx * math.sin(theta_e_k)
-        self.state_measurement[0][2] = theta_e_k
-        self.state_measurement[0][3] = (theta_e_k - theta_e_km1) / self.Ts
+        self.state_measurement[1][0] = self.vy + self.vx * math.sin(theta_e_k)
+        self.state_measurement[2][0] = theta_e_k
+        self.state_measurement[3][0] = (theta_e_k - theta_e_km1) / self.Ts
+        self.get_logger().info(f"states: {self.state_measurement}")
 
     def controller(self):
         """
@@ -298,7 +281,6 @@ class LqgController(Node):
         """
 
         self.get_logger().info("Here 1")
-
         # Update Car model LTV system --- A(Vx)
         sys = self.car_model.build_error_model(self.vx)
 
@@ -309,7 +291,6 @@ class LqgController(Node):
         self.get_logger().info("Here 2")
         steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
 
-        # TODO: function of cross-track error (e_cg) or heading error (theta_e)??
         # Throttle gain scheduling
         tracking_error = self.state_measurement[0][0]
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
