@@ -106,6 +106,7 @@ class LqrController(Node):
         self.ecg = 0  # cross-track error
         self.theta_e = 0  # heading error
         self.theta_e_dot = 0  # heading error yaw_rate
+        self.delta_raw = 0
 
         # Default actuator values
         self.declare_parameters(
@@ -319,7 +320,7 @@ class LqrController(Node):
         K = self.update_gains()
 
         # Steering LQR
-        delta_raw = -np.dot(K[0], self.state_measurement).flat[0]
+        self.delta_raw = -np.dot(K[0], self.state_measurement).flat[0]
 
         # Throttle gain scheduling
         tracking_error = self.state_measurement[0][0]
@@ -327,10 +328,8 @@ class LqrController(Node):
         speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
 
         # Clamp control inputs
-        delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
+        delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
-
-        self.get_logger().info(f"Updating DELTA: ({delta})")
 
         # Publish values
         self.current_time
@@ -354,7 +353,7 @@ class LqrController(Node):
         
 
     def compare_manual_and_lqr(self):
-        self.df = pd.concat([self.df, pd.DataFrame.from_records([{'time': time.time() - self.start_time, 'joy_delta': self.joy_steering, 'joy_speed': self.joy_speed, 'lqr_delta': self.drive_cmd.drive.steering_angle, 'lqr_speed': self.drive_cmd.drive.speed}])])
+        self.df = pd.concat([self.df, pd.DataFrame.from_records([{'time': time.time() - self.start_time, 'joy_delta': self.joy_steering, 'joy_speed': self.joy_speed, 'lqr_delta': self.delta_raw, 'lqr_speed': self.drive_cmd.drive.speed}])])
 
     def save_csv(self):
         self.df.to_csv(self.data_file, index = False)
