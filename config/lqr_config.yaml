@@ -8,16 +8,10 @@ lqr_node:
     k2_coeff: [1.0, 1.0, 1.0]
     k3_coeff: [1.0, 1.0, 1.0]
     k4_coeff: [1.0, 1.0, 1.0]
-    zero_throttle  : -0.032
-    max_throttle : 0.382 
-    min_throttle : 0.363 
+    zero_speed  : 0.0
+    max_speed : 2.0 
+    min_speed : 0.363 
     error_threshold : 0.16 
-    max_right_steering : 0.792 
-    max_left_steering : -0.831
+    max_right_steering : -0.4 
+    max_left_steering : 0.4
     Ts : 0.01
-    m : 630 
-    Lf : 0.42
-    Lr : 0.58
-    L : 2.9718
-    cf : 160000.0
-    cr : 160000.0

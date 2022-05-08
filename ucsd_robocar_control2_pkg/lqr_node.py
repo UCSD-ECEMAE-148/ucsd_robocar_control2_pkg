@@ -18,6 +18,7 @@ import math
 NODE_NAME = 'lqr_node'
 # ACTUATOR_TOPIC_NAME = '/vesc/high_level/ackermann_cmd_mux/output'
 ACTUATOR_TOPIC_NAME = '/lqr_controller_test'
+JOY_TOPIC_NAME = '/teleop'
 
 # PATH_TOPIC_NAME = '/global_trajectory'
 # ODOM_TOPIC_NAME = '/odom'
@@ -27,29 +28,39 @@ PATH_TOPIC_NAME = '/trajectory'
 class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
+        self.data_file = "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/test.csv"
+
+        self.df = pd.DataFrame(columns = ['time', 'joy_delta', 'joy_speed', 'lqr_delta', 'lqr_speed'])
          
         # self.controller_thread = MutuallyExclusiveCallbackGroup()
         self.path_thread = MutuallyExclusiveCallbackGroup()
         # self.odom_thread = MutuallyExclusiveCallbackGroup()
         self.pose_thread = MutuallyExclusiveCallbackGroup()
+        self.joy_thread = MutuallyExclusiveCallbackGroup()
 
         # Actuator control
         self.drive_pub = rospy.Publisher(ACTUATOR_TOPIC_NAME, AckermannDriveStamped, queue_size=self.QUEUE_SIZE)
         self.drive_cmd = AckermannDriveStamped()
         
         ### Get sensor measurements ###
-        #
-        # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(PoseStamped, POSE_TOPIC_NAME, self.pose_measurement, 10, callback_group=self.pose_thread)
-        self.pose_subscriber
 
         # # Get Odometry measurements
         # self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10, callback_group=self.odom_thread)
         # self.odom_subscriber
 
+        # Get GPS/Lidar measurements
+        self.pose_subscriber = self.create_subscription(PoseStamped, POSE_TOPIC_NAME, self.pose_measurement, queue_size=self.QUEUE_SIZE, callback_group=self.pose_thread)
+        self.pose_subscriber
+
         # Get Reference Trajectory
         self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, rclpy.qos.qos_profile_sensor_data, callback_group=self.path_thread)
         self.path_subscriber
+
+        # Get Joystick commands
+        self.path_subscriber = self.create_subscription(AckermannDriveStamped, JOY_TOPIC_NAME, self.set_joy_command, queue_size=self.QUEUE_SIZE, callback_group=self.joy_thread)
+        self.path_subscriber
+
+        self.current_time = self.get_clock().now().to_msg()
 
         # Sensor measurements
         self.x = 0
@@ -58,6 +69,8 @@ class LqrController(Node):
         self.yaw_rate = 0
         self.vx = 0.1
         self.vy = 0
+        self.joy_speed = 0
+        self.joy_steering = 0
 
         self.x_buffer = 0
         self.y_buffer = 0
@@ -65,6 +78,8 @@ class LqrController(Node):
         self.yaw_rate_buffer = 0
         self.vx_buffer = 0.1
         self.vy_buffer = 0
+        self.joy_speed_buffer = 0
+        self.joy_steering_buffer = 0
 
 
         # Controller modules
@@ -146,6 +161,7 @@ class LqrController(Node):
         # Call controller
         self.Ts = 0.01  # contoller sample time
         self.create_timer(self.Ts, self.controller)
+        self.create_timer(1.0, self.save_csv)
 
     def odom_measurement(self, odom_data):
         # TODO: what is frequency of data coming in?
@@ -192,6 +208,10 @@ class LqrController(Node):
         self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
         self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
         # self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
+
+    def set_joy_command(self, joy_data):
+        self.joy_speed_buffer = joy_data.drive.speed
+        self.joy_steering_buffer = joy_data.drive.steering_angle
 
     def get_cross_track_error(self):
         # self.get_logger().info("Updating CROSS-TRACK-ERROR")
@@ -241,6 +261,13 @@ class LqrController(Node):
         # car speed
         self.vx = self.vx_buffer
         self.vy = self.vy_buffer
+
+        # manual control
+        self.joy_speed = self.joy_speed_buffer 
+        self.joy_steering = self.joy_steering_buffer
+
+        # time
+        self.current_time = self.get_clock().now().to_msg()
 
     def update_gains(self):
         K = self.lqr_calc.compute_single_gain_sample(self.sys)
@@ -300,19 +327,30 @@ class LqrController(Node):
         self.get_logger().info(f"Updating DELTA: ({delta})")
 
         # Publish values
+        self.current_time
         try:
             # publish drive control signal
-            self.drive_cmd.header = self.get_clock().now().to_msg()
+            self.drive_cmd.header = self.current_time
             self.drive_cmd.drive.speed = speed
             self.drive_cmd.drive.steering_angle = delta
 
         except KeyboardInterrupt:
-            self.drive_cmd.header = self.get_clock().now().to_msg()
+            self.drive_cmd.header = self.current_time
             self.drive_cmd.drive.speed = 0
             self.drive_cmd.drive.steering_angle = 0
 
         # Update States
         self.update_states()
+
+        # write out
+        self.compare_manual_and_lqr()
+        
+
+    def compare_manual_and_lqr(self):
+        self.df = self.df.append({'time': self.current_time, 'joy_delta': self.joy_steering, 'joy_speed': self.joy_speed, 'lqr_delta': self.drive_cmd.drive.steering_angle, 'lqr_speed': self.drive_cmd.drive.speed}, ignore_index=True)
+
+    def save_csv(self):
+        self.df.to_csv(self.data_file, index = False)
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound == None:
@@ -342,6 +380,9 @@ def main(args=None):
         lqr_publisher.twist_cmd.linear.x=lqr_publisher.zero_speed
         lqr_publisher.twist_publisher.publish(lqr_publisher.twist_cmd)
         time.sleep(1)
+    finally:
+        lqr_publisher.save_csv()
+        lqr_publisher.get_logger().info(f'{NODE_NAME} saved data to {lqr_publisher.data_file}.')
         lqr_publisher.destroy_node()
         rclpy.shutdown()
         lqr_publisher.get_logger().info(f'{NODE_NAME} shut down successfully.')
