@@ -40,8 +40,10 @@ class PidController(Node):
                 ('Ki_steering', 0),
                 ('Kd_steering', 0),
                 ('integral_max', 0),
-                ('upper_error_threshold', 0.15),
-                ('lower_error_threshold', 0.15),
+                ('heading_upper_error_threshold', 0.15),
+                ('heading_lower_error_threshold', 0.15),
+                ('long_upper_error_threshold', 0.15),
+                ('long_lower_error_threshold', 0.15),
                 ('zero_speed', 0.0),
                 ('max_speed', 5),
                 ('min_speed', 0.1),
@@ -52,8 +54,10 @@ class PidController(Node):
         self.Ki = self.get_parameter('Ki_steering').value
         self.Kd = self.get_parameter('Kd_steering').value
         self.integral_max = self.get_parameter('integral_max').value 
-        self.upper_error_threshold = self.get_parameter('upper_error_threshold').value # between [0,1]
-        self.lower_error_threshold = self.get_parameter('lower_error_threshold').value # between [0,1]
+        self.heading_upper_error_threshold = self.get_parameter('heading_upper_error_threshold').value # between [0,1]
+        self.heading_lower_error_threshold = self.get_parameter('heading_lower_error_threshold').value # between [0,1]
+        self.long_upper_error_threshold = self.get_parameter('long_upper_error_threshold').value # between [0,1]
+        self.long_lower_error_threshold = self.get_parameter('long_lower_error_threshold').value # between [0,1]
         self.zero_speed=self.get_parameter('zero_speed').value  # should be around 0
         self.max_speed=self.get_parameter('max_speed').value  # between [0,5] m/s
         self.min_speed=self.get_parameter('min_speed').value  # between [0,5] m/s 
@@ -77,8 +81,10 @@ class PidController(Node):
             f'\n Kp_steering: {self.Kp}'
             f'\n Ki_steering: {self.Ki}'
             f'\n Kd_steering: {self.Kd}'
-            f'\n upper_error_threshold: {self.upper_error_threshold}'
-            f'\n lower_error_threshold: {self.lower_error_threshold}'
+            f'\n heading_upper_error_threshold: {self.heading_upper_error_threshold}'
+            f'\n heading_lower_error_threshold: {self.heading_lower_error_threshold}'
+            f'\n long_upper_error_threshold: {self.long_upper_error_threshold}'
+            f'\n long_lower_error_threshold: {self.long_lower_error_threshold}'
             f'\n zero_speed: {self.zero_speed}'
             f'\n max_speed: {self.max_speed}'
             f'\n min_speed: {self.min_speed}'
@@ -115,8 +121,8 @@ class PidController(Node):
         delta_raw = self.proportional_error + self.derivative_error + self.integral_error
 
         # Throttle gain scheduling (function of error)
-        self.inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * self.upper_error_threshold
-        speed_raw = ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * abs(self.e_theta) + self.inf_throttle
+        self.inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (self.heading_upper_error_threshold - self.heading_lower_error_threshold)) * self.heading_upper_error_threshold
+        speed_raw = ((self.min_speed - self.max_speed) / (self.heading_upper_error_threshold - self.heading_lower_error_threshold)) * abs(self.e_theta) + self.inf_throttle
 
         # clamp values
         delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
@@ -133,20 +139,28 @@ class PidController(Node):
                                )
         self.e_y_1 = self.e_y
 
-        # Publish values
-        try:
+        if self.e_x < self.long_upper_error_threshold:
+            # Publish values
+            try:
+                # publish drive control signal
+                self.drive_cmd.header.stamp = self.current_time
+                self.drive_cmd.header.frame_id = self.frame_id
+                self.drive_cmd.drive.speed = speed
+                self.drive_cmd.drive.steering_angle = -delta
+                self.drive_pub.publish(self.drive_cmd)
+
+            except KeyboardInterrupt:
+                self.drive_cmd.header.stamp = self.current_time
+                self.drive_cmd.header.frame_id = self.frame_id
+                self.drive_cmd.drive.speed = 0
+                self.drive_cmd.drive.steering_angle = 0
+                self.drive_pub.publish(self.drive_cmd)
+        else:
             # publish drive control signal
             self.drive_cmd.header.stamp = self.current_time
             self.drive_cmd.header.frame_id = self.frame_id
-            self.drive_cmd.drive.speed = speed
-            self.drive_cmd.drive.steering_angle = -delta
-            self.drive_pub.publish(self.drive_cmd)
-
-        except KeyboardInterrupt:
-            self.drive_cmd.header.stamp = self.current_time
-            self.drive_cmd.header.frame_id = self.frame_id
-            self.drive_cmd.drive.speed = 0
-            self.drive_cmd.drive.steering_angle = 0
+            self.drive_cmd.drive.speed = self.zero_speed
+            self.drive_cmd.drive.steering_angle = 0.0
             self.drive_pub.publish(self.drive_cmd)
 
     def clamp(self, value, upper_bound, lower_bound=None):
