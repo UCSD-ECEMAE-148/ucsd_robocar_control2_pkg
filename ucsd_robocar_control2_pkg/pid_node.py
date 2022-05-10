@@ -3,6 +3,7 @@ from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, MultiArrayDimension, MultiArrayLayout
 from ackermann_msgs.msg import AckermannDriveStamped
 import time
+import math
 import os
 import numpy as np
 
@@ -20,8 +21,12 @@ class PidController(Node):
         self.drive_pub = self.create_publisher(AckermannDriveStamped, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
         self.drive_cmd = AckermannDriveStamped()
 
+        # Error subscriber
         self.error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE)
         self.error_subscriber
+
+        # Speed subscriber
+
 
         # setting up message structure for vesc-ackermann msg
         self.current_time = self.get_clock().now().to_msg()
@@ -101,22 +106,20 @@ class PidController(Node):
         # Get latest measurement
         self.get_latest_measurements()
 
+
         # Steering PID terms
         self.proportional_error = self.Kp * self.e_y
         self.derivative_error = self.Kd * (self.e_y - self.e_y_1) / self.Ts
         self.integral_error += self.Ki * self.e_y * self.Ts
         self.integral_error = self.clamp(self.integral_error, self.integral_max)
         delta_raw = self.proportional_error + self.derivative_error + self.integral_error
-        # clamp values
-        delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling (function of error)
-
-        self.upper_error_threshold 
-         
         self.inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * self.upper_error_threshold
-        Kp_speed = ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * abs(delta) + self.inf_throttle
-        speed_raw = -Kp_speed * self.e_x
+        speed_raw = ((self.min_speed - self.max_speed) / (self.upper_error_threshold - self.lower_error_threshold)) * abs(self.e_theta) + self.inf_throttle
+
+        # clamp values
+        delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
         
         self.get_logger().info(f'\n'
