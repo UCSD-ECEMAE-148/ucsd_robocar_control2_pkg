@@ -14,6 +14,7 @@ from tf_transformations import euler_from_quaternion, quaternion_from_euler
 from .controller_submodule.lqr_calculator import LQRDesign
 from .controller_submodule.car_model import CarModel
 from .controller_submodule.linear_kalman_filter import LinearKalmanFilter
+from .controller_submodule.ss_simulation import StateSpaceSimulation
 import numpy as np
 import pandas as pd
 import math
@@ -93,7 +94,10 @@ class LqgController(Node):
         self.vx = 0
         self.vy = 0
         self.joy_speed = 0
-        self.joy_steering = 0
+        self.joy_steering = 0 
+        self.e_y_buffer = 0
+        self.e_x_buffer = 0
+        self.e_theta_buffer = 0
 
         # Sensor measurements Buffer
         # IMU
@@ -112,6 +116,7 @@ class LqgController(Node):
         self.car_model = CarModel()
         self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
+        self.ss_simulation = StateSpaceSimulation()
         self.P = np.diag([0, 0, 0, 0])
         self.Qo = np.diag([0.1, 0.1, 0.1, 0.1])
         self.Ro = [0.1]
@@ -208,44 +213,6 @@ class LqgController(Node):
         self.joy_speed_buffer = joy_data.drive.speed
         self.joy_steering_buffer = joy_data.drive.steering_angle
 
-    def get_cross_track_error(self):
-        # self.get_logger().info("Updating CROSS-TRACK-ERROR")
-        
-        # find 2 closest points in path with car
-        error_x = self.x_path - self.x
-        error_y = self.y_path - self.y
-        error_mag = np.power(np.power(error_x,2) + np.power(error_y, 2), 0.5)
-        error_mag1, error_mag2 = np.partition(error_mag, 1)[0:2]
-        error_mag1_index = np.argwhere(error_mag == error_mag1)[0][0]
-        error_mag2_index = np.argwhere(error_mag == error_mag2)[0][0]
-        Px1 = self.x_path[error_mag1_index]
-        Px2 = self.x_path[error_mag2_index]
-        Py1 = self.y_path[error_mag1_index]
-        Py2 = self.y_path[error_mag2_index]
-        
-        # create line extrapolations to determine cross-track error
-        # (threshold added to account for zero/infinite slopes)
-        
-        # path line
-        delta_x = Px2 - Px1 + self.line_error_threshold
-        delta_y = Py2 - Py1 + self.line_error_threshold
-        theta_path = float(np.arctan2(delta_y, delta_x))
-        path_slope = delta_y / delta_x
-        path_intercept = Py1 - path_slope * Px1
-        
-        # car line
-        car_slope = -1 / path_slope
-        car_intercept = self.y - car_slope * self.x
-        ecg_x = (path_intercept - car_intercept) / (car_slope - path_slope)
-        ecg_y = car_slope * ecg_x + car_intercept
-
-        # get actual cross-track error distance and use sign of slope to determine direction
-        ecg_r = np.power(np.power((self.x - ecg_x),2) + np.power((self.y - ecg_y), 2), 0.5)
-        e_cg_sign = np.sign(car_slope)
-        e_cg = float(e_cg_sign * ecg_r)
-        self.get_logger().info(f"{e_cg},{theta_path}")
-        return e_cg, theta_path
-
     def get_latest_measurements(self):
         # car orientation
         # self.yaw = float(np.mean([self.yaw_lidar_buffer, self.yaw_imu_buffer, self.yaw_vesc_buffer]))
@@ -324,10 +291,10 @@ class LqgController(Node):
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
-        self.y = self.car_model.calc_output(self.state_measurement)
+        self.y_sim = self.ss_simulation.get_output(self.sys, self.state_measurement, self.joy_steering)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, delta, self.y, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_sim, self.P, self.Qo, self.Ro)
         
         # self.get_logger().info(
         #     f'\n e_cg: {self.state_measurement[0][0]}'

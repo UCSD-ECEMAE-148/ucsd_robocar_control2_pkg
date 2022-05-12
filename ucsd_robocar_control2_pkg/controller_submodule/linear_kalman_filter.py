@@ -17,7 +17,7 @@ class LinearKalmanFilter:
         self.yhat_mat = []  # storage for yhat over time
         self.lqr_car = CarModel()
         self.sysd = 0
-        self.debug = False
+        self.debug = True
 
     def build_system(self, Vx):
         self.sysd = self.lqr_car.build_error_model(Vx)
@@ -30,11 +30,20 @@ class LinearKalmanFilter:
         C = np.array(C)
         D = np.array(D)
         x0 = np.array(x0)
-        u = np.array(u)
+        u = np.array([u])
         y = np.array(y)
         P0 = np.array(P0)
         Qo = np.array(Qo)
         Ro = np.array(Ro)
+        # print(f"A: {A}")
+        # print(f"B: {B}")
+        # print(f"C: {C}")
+        # print(f"D: {D}")
+        # print(f"self.x0: {x0}")
+        # print(f"u: {u}")
+        # print(f"y: {y}")
+        # print(f"K: {P0}")
+        # print(f"y: {y}")
 
         a_num_rows, a_num_cols = A.shape
         d_num_rows, d_num_cols = D.shape
@@ -59,48 +68,50 @@ class LinearKalmanFilter:
 
                 # # Measurement update
                 K = np.dot(np.dot(np.dot(A, self.Pp), C_t),np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro)))  # Kalman predictor gain
-                self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1),np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
+                self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1), np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
                 self.Pp = np.subtract(self.Pp, np.dot(np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C), self.Pp))
 
                 # filtered output prediction
                 self.yhat = np.dot(C, self.xhat)
                 
             except:
-                if self.debug:
-                    print("Error occured during calculations")
-                    print(f"A: {A}")
-                    print(f"self.xhat: {self.xhat}")
-                    print(f"np.dot(B, u[k]): {np.dot(B, u[k])}")
-                    print(f"K: {K}")
-                    print(f"y[:, k]: {y[:, k]}")
-                    print(f"np.dot(K, y[:, k]): {np.dot(K, y[:, k])}")
-                    print(f"np.dot(K, y[:, k]).reshape(num_states, 1)): {np.dot(K, y[:, k]).reshape(num_states, 1)}")
-                    print(f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))}")
-                    print(f"self.xhat_mat: {self.xhat_mat}")
-                    print(f"self.xhat: {self.xhat}")
-                    print(f"A: {A}")
-                    print(f"self.xhat: {self.xhat}")
-                    print(f"np.dot(A, self.xhat) 2: {np.dot(A, self.xhat)}")
-                    print(f"B: {B}")
-                    print(f"u[k]: {u[k]}")
-                    print(f"np.dot(B, u[k]): {np.dot(B, u[k])}")
-                    print(f"K_mat: {self.K_mat}")
-                    print(f"K: {K}")
-                    print(f"y: {self.yhat}")
-                    print(f"y_mat: {self.yhat_mat}")
-        print(f"\n self.xhat {self.xhat}")
+                pass
+            
+            # if self.debug:
+        # print("Error occured during calculations")
+        # print(f"A: {A}")
+        # print(f"self.xhat: {self.xhat}")
+        # print(f"u[0]: {u}")
+        # print(f"np.dot(B, u[k]): {np.dot(B, u[0])}")
+        # print(f"K: {K}")
+        # print(f"y[:, k]: {y[:, 0]}")
+        # print(f"np.dot(K, y[:, k]): {np.dot(K, y[:, 0])}")
+        # print(f"np.dot(K, y[:, k]).reshape(num_states, 1)): {np.dot(K, y[:, 0]).reshape(num_states, 1)}")
+        # print(f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[0]), np.dot(K, y[:, 0]).reshape(num_states, 1))}")
+        # print(f"self.xhat_mat: {self.xhat_mat}")
+        # print(f"self.xhat: {self.xhat}")
+        # print(f"A: {A}")
+        # print(f"self.xhat: {self.xhat}")
+        # print(f"np.dot(A, self.xhat) 2: {np.dot(A, self.xhat)}")
+        # print(f"B: {B}")
+        # print(f"u[k]: {u[k]}")
+        # print(f"np.dot(B, u[k]): {np.dot(B, u[k])}")
+        # print(f"K_mat: {self.K_mat}")
+        # print(f"K: {K}")
+        # print(f"y: {self.yhat}")
+        # print(f"y_mat: {self.yhat_mat}")
         return self.xhat, self.Pp
 
 
 def main():
     my_kalman = LinearKalmanFilter()
-    my_kalman.build_system(0.71)
+    my_kalman.build_system(0.28)
     # x0 = [0, 0, 0, 0]
-    x0 = np.array([[0.21],
-                  [0.52],
-                  [-0.77],
+    x0 = np.array([[0.34],
+                  [-0.12],
+                  [0.42],
                   [0]])
-    u = [0.38]
+    u = 0.19
     y = np.array([[1],
                   [1],
                   [1],
@@ -115,6 +126,12 @@ def main():
           f"\n y: {y}" \
           f"\n" \
           f"\n xhat: {my_kalman.xhat}" \
+          f"\n xhat_type: {type(x0)}" \
+          f"\n u: {type(u)}" \
+          f"\n y: {type(y)}" \
+          f"\n" \
+          f"\n" \
+          f"\n" \
           )
 
 
