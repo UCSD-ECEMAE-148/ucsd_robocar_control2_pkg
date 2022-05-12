@@ -3,8 +3,11 @@ import time
 import math
 import rclpy
 from rclpy.node import Node
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32, Float32MultiArray
 from geometry_msgs.msg import Twist, Pose, PoseWithCovarianceStamped
+from ackermann_msgs.msg import AckermannDriveStamped
 from nav_msgs.msg import Path, Odometry
 from sensor_msgs.msg import Imu
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
@@ -43,9 +46,10 @@ class LqgController(Node):
             'lqg_e_cg_dot',\
             'lqg_theta_e',\
             'lqg_theta_e_dot',\
-            'lidar_e_y',\
-            'lidar_e_x',\
-            'lidar_e_theta',\
+            'lqg_e_cg_hat', \
+            'lqg_e_cg_dot_hat', \
+            'lqg_theta_e_hat', \
+            'lqg_theta_e_dot_hat', \
             'yaw',\
             'yaw_rate',\
             'vx',\
@@ -84,28 +88,19 @@ class LqgController(Node):
         self.current_time = self.get_clock().now().to_msg()
 
         # Sensor measurements
-        self.x = 0
-        self.y = 0
         self.yaw = 0
         self.yaw_rate = 0
         self.vx = 0
         self.vy = 0
+        self.joy_speed = 0
+        self.joy_steering = 0
 
         # Sensor measurements Buffer
-        # Lidar
-        self.x_lidar_buffer = 0
-        self.y_lidar_buffer = 0
-        self.yaw_lidar_buffer = 0
-
         # IMU
         self.yaw_imu_buffer = 0
         self.yaw_rate_imu_buffer = 0
 
         # VESC
-        self.x_vesc_buffer = 0
-        self.y_vesc_buffer = 0
-        self.yaw_vesc_buffer = 0
-        self.yaw_rate_vesc_buffer = 0
         self.vx_vesc_buffer = 0.1
         self.vy_vesc_buffer = 0
 
@@ -113,26 +108,23 @@ class LqgController(Node):
         self.joy_speed_buffer = 0
         self.joy_steering_buffer = 0
 
-        # Path coordinates
-        self.x_path = []
-        self.y_path = []
-        self.yaw_path = []
-
         # Controller and State Estimate modules
         self.car_model = CarModel()
         self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
-        self.P = np.diag([1, 1, 1, 1])
-        self.Qo = np.diag([1, 1, 1, 1])
+        self.P = np.diag([0, 0, 0, 0])
+        self.Qo = np.diag([0.1, 0.1, 0.1, 0.1])
         self.Ro = [0.1]
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.state_est = self.x0
+        self.sys = self.car_model.build_error_model(self.vx)
 
         # Calculated states
-        self.ecg = 0  # cross-track error
-        self.theta_e = 0  # heading error
-        self.theta_e_dot = 0  # heading error rate
+        self.e_y = 0  # cross-track error
+        self.e_x = 0  # longitduinal error
+        self.e_theta_m1 = 0  # previous heading error
+        self.e_theta = 0  # heading error
 
         # Declare ROS parameters
         self.declare_parameters(
@@ -193,7 +185,12 @@ class LqgController(Node):
         self.vy_vesc_buffer = odom_data.twist.twist.linear.y
 
         # car orientation
-        quaternion = (odom_data.orientation.x, odom_data.orientation.y, odom_data.orientation.z, odom_data.orientation.w)
+        quaternion = (\
+            odom_data.pose.pose.orientation.x, \
+            odom_data.pose.pose.orientation.y, \
+            odom_data.pose.pose.orientation.z, \
+            odom_data.pose.pose.orientation.w \
+            )
         euler = euler_from_quaternion(quaternion)
         self.yaw_vesc_buffer = euler[2]
 
@@ -251,10 +248,12 @@ class LqgController(Node):
 
     def get_latest_measurements(self):
         # car orientation
-        self.yaw = float(np.mean([self.yaw_lidar_buffer, self.yaw_imu_buffer, self.yaw_vesc_buffer]))
+        # self.yaw = float(np.mean([self.yaw_lidar_buffer, self.yaw_imu_buffer, self.yaw_vesc_buffer]))
+        self.yaw = self.yaw_imu_buffer
 
         # car angular speed
-        self.yaw_rate = float(np.mean([self.yaw_rate_imu_buffer, self.yaw_rate_vesc_buffer]))
+        # self.yaw_rate = float(np.mean([self.yaw_rate_imu_buffer, self.yaw_rate_vesc_buffer]))
+        self.yaw_rate = self.yaw_rate_imu_buffer
         
         # car linear speed
         self.vx = self.vx_vesc_buffer
@@ -279,21 +278,9 @@ class LqgController(Node):
         self.state_measurement[2][0] = self.e_theta
         self.state_measurement[3][0] = (self.e_theta - self.e_theta_m1) / self.Ts
 
-
     def update_gains(self):
         K = self.lqr_calc.compute_single_gain_sample(self.sys)
         return K
-
-    def update_states(self):
-        # self.get_logger().info("Updating STATES")
-        theta_e_km1 = self.state_measurement[2][0]
-        e_cg, theta_path = self.get_cross_track_error()
-        theta_e_k = theta_path - self.yaw
-        self.state_measurement[0][0] = e_cg
-        self.state_measurement[1][0] = self.vy + self.vx * math.sin(self.e_theta)
-        self.state_measurement[2][0] = self.e_theta
-        self.state_measurement[3][0] = (theta_e_k - theta_e_km1) / self.Ts
-        self.get_logger().info(f"states: {self.state_measurement}")
 
     def controller(self):
         """
@@ -320,30 +307,42 @@ class LqgController(Node):
         -speed (m/s)
         """
 
-        self.get_logger().info("Here 1")
         # Update Car model LTV system --- A(Vx)
-        sys = self.car_model.build_error_model(self.vx)
+        self.sys = self.car_model.build_error_model(self.vx)
 
         # get updated gains
         K = self.update_gains()
 
         # Steering LQR
-        self.get_logger().info("Here 2")
         self.delta_raw = -np.dot(K[0], self.state_est).flat[0]
-        delta = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling
         normalized_delta = delta / self.max_right_steering
-        self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
-        throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
+        self.inf_throttle = self.min_speed - (self.min_speed - self.max_speed) / (1 - self.error_threshold)
+        speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
+        speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
         self.y = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(sys, self.state_est, steering_float, self.y, self.P, self.Qo, self.Ro)
-        self.get_logger().info("Here 3")
+        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, delta, self.y, self.P, self.Qo, self.Ro)
+        
+        # self.get_logger().info(
+        #     f'\n e_cg: {self.state_measurement[0][0]}'
+        #     f'\n e_cg_dot: {self.state_measurement[1][0]}'
+        #     f'\n theta_e: {self.state_measurement[2][0]}'
+        #     f'\n theta_e_dot: {self.state_measurement[3][0]}'
+        #     f'\n yaw: {self.yaw}'
+        #     f'\n yaw_rate: {self.yaw_rate}'
+        #     f'\n vx: {self.vx}'
+        #     f'\n vy: {self.vy}'
+        #     f'\n joy_speed: {self.joy_speed}'
+        #     f'\n joy_steering: {self.joy_steering}'
+        #     f'\n y: {self.y}'
+        #     f'\n state_est: {self.state_est}'
+        # )
 
         # Publish values
         try:
@@ -357,35 +356,35 @@ class LqgController(Node):
         except KeyboardInterrupt:
             self.drive_cmd.header.stamp = self.current_time
             self.drive_cmd.header.frame_id = self.frame_id
-            self.drive_cmd.drive.speed = 0
+            self.drive_cmd.drive.speed = self.zero_speed
             self.drive_cmd.drive.steering_angle = 0
             self.drive_pub.publish(self.drive_cmd)
 
         # Get new sensor measurements
-        self.update_states()
+        self.get_latest_measurements()
 
         # write out
         self.compare_manual_and_lqr()
         
     def compare_manual_and_lqr(self):
-        self.df = pd.concat([self.df, pd.DataFrame.from_records([{\
-            'time': time.time() - self.start_time, \
-            'joy_delta': self.joy_steering, \
-            'joy_speed': self.joy_speed, \
-            'lqg_delta': self.delta_raw, \
-            'lqg_speed': self.drive_cmd.drive.speed, \
-            'lqg_e_cg': self.state_measurement[0][0], \
-            'lqg_e_cg_dot': self.state_measurement[1][0], \
-            'lqg_theta_e': self.state_measurement[2][0], \
-            'lqg_theta_e_dot': self.state_measurement[3][0], \
-            'lqg_e_cg_hat': self.self.state_est[0][0], \
-            'lqg_e_cg_dot_hat': self.self.state_est[1][0], \
-            'lqg_theta_e_hat': self.self.state_est[2][0], \
-            'lqg_theta_e_dot_hat': self.self.state_est[3][0], \
-            'yaw': self.yaw, \
-            'yaw_rate': self.yaw_rate, \
-            'vx': self.vx, \
-            'vy': self.vy
+        self.df = pd.concat([self.df, pd.DataFrame.from_records([{ \
+            'time': float(round((time.time() - self.start_time),3)), \
+            'joy_delta': float(round(self.joy_steering,3)), \
+            'joy_speed': float(round(self.joy_speed,3)), \
+            'lqg_delta': float(round(self.delta_raw,3)), \
+            'lqg_speed': float(round(self.drive_cmd.drive.speed,3)), \
+            'lqg_e_cg': float(round(self.state_measurement[0][0],3)), \
+            'lqg_e_cg_dot': float(round(self.state_measurement[1][0],3)), \
+            'lqg_theta_e': float(round(self.state_measurement[2][0],3)), \
+            'lqg_theta_e_dot': float(round(self.state_measurement[3][0],3)), \
+            'lqg_e_cg_hat': float(round(self.state_est[0][0],3)), \
+            'lqg_e_cg_dot_hat': float(round(self.state_est[1][0],3)), \
+            'lqg_theta_e_hat': float(round(self.state_est[2][0],3)), \
+            'lqg_theta_e_dot_hat': float(round(self.state_est[3][0],3)), \
+            'yaw': float(round(self.yaw,3)), \
+            'yaw_rate': float(round(self.yaw_rate,3)), \
+            'vx': float(round(self.vx,3)), \
+            'vy': float(round(self.vy,3)) \
             }])])
 
     def save_csv(self):
@@ -407,9 +406,14 @@ def main(args=None):
     rclpy.init(args=args)
     lqg_publisher = LqgController()
     try:
-        rclpy.spin(lqg_publisher)
-        lqg_publisher.destroy_node()
-        rclpy.shutdown()
+        executor = MultiThreadedExecutor(num_threads=4)
+        executor.add_node(lqg_publisher)
+        try:
+            executor.spin()
+        finally:
+            executor.shutdown()
+            lqg_publisher.save_csv()
+            lqg_publisher.destroy_node()
     except KeyboardInterrupt:
         lqg_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
         lqg_publisher.drive_cmd.header.stamp = lqg_publisher.current_time

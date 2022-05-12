@@ -264,6 +264,10 @@ class CarModel:
         theta_e_dot = path_yaw - car_yaw
         return theta_e_dot
 
+    def calc_output(self, state_vector):
+        y = np.dot(self.sysd.C, state_vector)
+        return y
+
     def ctrb_test(self, sysd):
         result = False
         rank = np.linalg.matrix_rank(ctrb(sysd.A, sysd.B))
@@ -291,17 +295,21 @@ def build_model_example():
     psi = 0
     Vx = 3
     Vy = 0
+    x0 = np.array([[0.1], [0.2], [0.3], [0.4]])
     my_car_model = CarModel()
-    my_sys = my_car_model.build_error_model(V_x, 1)
+    my_sys = my_car_model.build_error_model(V_x)
+    y = my_car_model.calc_output(x0)
     # my_sys = my_car_model.build_2d_bicycle_model(delta, psi, Vx, Vy)
     [A, B, C, D] = ssdata(my_sys)
     print(f"my_sys.A: {my_sys.A}" 
-          f"\nmy_sys.Ts: {my_sys.dt}"
-          f"\nA: {A}"
-          f"\nA: {np.linalg.matrix_rank(A)}"
-          f"\nB: {B}"
-          f"\nC: {C}"
-          f"\nD: {D}")
+          f"\n my_sys.Ts: {my_sys.dt}"
+          f"\n A: {A}"
+          f"\n A: {np.linalg.matrix_rank(A)}"
+          f"\n B: {B}"
+          f"\n C: {C}"
+          f"\n D: {D}"
+          f"\n y: {y}"
+          )
     my_car_model.ctrb_test(my_sys)
     my_car_model.obsv_test(my_sys)
 

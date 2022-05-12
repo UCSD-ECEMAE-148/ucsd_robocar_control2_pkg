@@ -12,8 +12,8 @@ import yaml
 
 def generate_launch_description():
     node_package = 'ucsd_robocar_control2_pkg'
-    config_file = 'lqg_config.yaml'
-    node_name = 'lqg_node'
+    config_file = 'lqg_w_config.yaml'
+    node_name = 'lqg_w_node'
 
     ld = LaunchDescription()
 
@@ -21,18 +21,6 @@ def generate_launch_description():
         get_package_share_directory(node_package),
         'config',
         config_file)
-    
-    # data_file = os.path.join(
-    #     get_package_share_directory(node_package),
-    #     'data',
-    #     'file_name.csv'
-    # )
-
-    # control_node = Node(
-    #     package=node_package,
-    #     executable=node_name,
-    #     output='screen',
-    #     parameters=[config, {'data_out_location': data_file}])
 
     control_node = Node(
         package=node_package,

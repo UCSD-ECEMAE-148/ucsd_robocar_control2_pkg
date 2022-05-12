@@ -17,7 +17,8 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.launch.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'controller_submodule'), glob('controller_submodule/*.py')),
-        (os.path.join('share', package_name, 'state_estimate_submodule'),glob('state_estimate_submodule/*.py'))
+        (os.path.join('share', package_name, 'state_estimate_submodule'),glob('state_estimate_submodule/*.py')),
+        (os.path.join('share', package_name, 'data'), glob('data/*.csv'))
     ],
     install_requires=['setuptools'],
     zip_safe=True,

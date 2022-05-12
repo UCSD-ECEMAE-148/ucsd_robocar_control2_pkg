@@ -1,7 +1,8 @@
 from control import *
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
-from LQR.control_submodule.car_model import CarModel
+from .car_model import CarModel
+# from car_model import CarModel
 
 
 class LinearKalmanFilter:
@@ -16,6 +17,7 @@ class LinearKalmanFilter:
         self.yhat_mat = []  # storage for yhat over time
         self.lqr_car = CarModel()
         self.sysd = 0
+        self.debug = False
 
     def build_system(self, Vx):
         self.sysd = self.lqr_car.build_error_model(Vx)
@@ -52,18 +54,13 @@ class LinearKalmanFilter:
                 self.xhat_mat[:, k] = self.xhat.transpose()  # store the estimates
 
                 # Time update
-                self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1),
-                                   np.dot(B, u[k]))  # predicted state estimate
+                self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1),np.dot(B, u[k]))  # predicted state estimate
                 self.Pp = np.add(np.dot(np.dot(A, self.Pp), A_t), Qo)  # covariance
 
                 # # Measurement update
-                K = np.dot(np.dot(np.dot(A, self.Pp), C_t),
-                           np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro)))  # Kalman predictor gain
-                self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1),
-                                   np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
-                self.Pp = np.subtract(self.Pp, np.dot(
-                    np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C),
-                    self.Pp))
+                K = np.dot(np.dot(np.dot(A, self.Pp), C_t),np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro)))  # Kalman predictor gain
+                self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1),np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
+                self.Pp = np.subtract(self.Pp, np.dot(np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C), self.Pp))
 
                 # filtered output prediction
                 self.yhat = np.dot(C, self.xhat)
@@ -91,24 +88,34 @@ class LinearKalmanFilter:
                     print(f"K: {K}")
                     print(f"y: {self.yhat}")
                     print(f"y_mat: {self.yhat_mat}")
-
+        print(f"\n self.xhat {self.xhat}")
         return self.xhat, self.Pp
 
 
 def main():
     my_kalman = LinearKalmanFilter()
-    my_kalman.build_system(5)
-    x0 = [1, 1, 1, 1]
-    u = [1, 1, 1, 1]
-    y = np.array([[1, 1, 1, 1],
-                  [1, 1, 1, 1],
-                  [1, 1, 1, 1],
-                  [1, 1, 1, 1]])
-    P0 = np.diag([1, 1, 1, 1])
-    Qo = np.diag([1, 1, 1, 1])
+    my_kalman.build_system(0.71)
+    # x0 = [0, 0, 0, 0]
+    x0 = np.array([[0.21],
+                  [0.52],
+                  [-0.77],
+                  [0]])
+    u = [0.38]
+    y = np.array([[1],
+                  [1],
+                  [1],
+                  [1]])
+    P0 = np.diag([0, 0, 0, 0])
+    Qo = np.diag([0.1, 0.1, 0.1, 0.1])
     Ro = [0.1]
     my_kalman.debug = True
     my_kalman.lkf(my_kalman.sysd, x0, u, y, P0, Qo, Ro)
+    print(f"\n A: {my_kalman.sysd.A}"\
+          f"\n" \
+          f"\n y: {y}" \
+          f"\n" \
+          f"\n xhat: {my_kalman.xhat}" \
+          )
 
 
 if __name__ == '__main__':
