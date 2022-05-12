@@ -30,6 +30,7 @@ setup(
         'console_scripts': [
             'lqr_node = ucsd_robocar_control2_pkg.lqr_node:main',
             'lqg_node = ucsd_robocar_control2_pkg.lqg_node:main',
+            'lqg_w_node = ucsd_robocar_control2_pkg.lqg_w_node:main',
             'mpc_node = ucsd_robocar_control2_pkg.mpc_node:main',
             'pid_node = ucsd_robocar_control2_pkg.pid_node:main'
         ],

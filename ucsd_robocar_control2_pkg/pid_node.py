@@ -58,11 +58,11 @@ class PidController(Node):
         self.heading_lower_error_threshold = self.get_parameter('heading_lower_error_threshold').value # between [0,1]
         self.long_upper_error_threshold = self.get_parameter('long_upper_error_threshold').value # between [0,1]
         self.long_lower_error_threshold = self.get_parameter('long_lower_error_threshold').value # between [0,1]
-        self.zero_speed=self.get_parameter('zero_speed').value  # should be around 0
-        self.max_speed=self.get_parameter('max_speed').value  # between [0,5] m/s
-        self.min_speed=self.get_parameter('min_speed').value  # between [0,5] m/s 
-        self.max_right_steering=self.get_parameter('max_right_steering').value  # negative(max_left) 
-        self.max_left_steering=self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
+        self.zero_speed = self.get_parameter('zero_speed').value  # should be around 0
+        self.max_speed = self.get_parameter('max_speed').value  # between [0,5] m/s
+        self.min_speed = self.get_parameter('min_speed').value  # between [0,5] m/s 
+        self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
+        self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
 
         # initializing PID control
         self.e_y_buffer = 0
@@ -111,7 +111,6 @@ class PidController(Node):
     def controller(self):
         # Get latest measurement
         self.get_latest_measurements()
-
 
         # Steering PID terms
         self.proportional_error = self.Kp * self.e_y

@@ -12,58 +12,78 @@ from .controller_submodule.lqr_calculator import LQRDesign
 from .controller_submodule.car_model import CarModel
 from .controller_submodule.linear_kalman_filter import LinearKalmanFilter
 import numpy as np
+import pandas as pd
+import math
+import time
 
-NODE_NAME = 'lqg_node'
-ACTUATOR_TOPIC_NAME = '/cmd_vel'
+NODE_NAME = 'lqg_w_node'
+# ACTUATOR_TOPIC_NAME = '/teleop'
+ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
-POSE_TOPIC_NAME = '/amcl_pose'
-PATH_TOPIC_NAME = '/global_trajectory'
-ERROR_TOPIC_NAME = '/path_error'
 IMU_TOPIC_NAME = '/imu'
 ODOM_TOPIC_NAME = '/odom'
+ERROR_TOPIC_NAME = '/error'
+JOY_TOPIC_NAME = '/teleop'
 
 
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.twist_publisher = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, 10)
-        self.twist_cmd = Twist()
+        self.frame_id = 'base_link'
+        self.QUEUE_SIZE = 10
+        self.data_out_location_default = "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/"
+        self.data_out_name_default = "test.csv"
+        self.df = pd.DataFrame(columns = [\
+            'time', \
+            'joy_delta', \
+            'joy_speed', \
+            'lqg_delta', \
+            'lqg_speed',\
+            'lqg_e_cg',\
+            'lqg_e_cg_dot',\
+            'lqg_theta_e',\
+            'lqg_theta_e_dot',\
+            'lidar_e_y',\
+            'lidar_e_x',\
+            'lidar_e_theta',\
+            'yaw',\
+            'yaw_rate',\
+            'vx',\
+            'vy'\
+            ])
+
+        # self.controller_thread = MutuallyExclusiveCallbackGroup()
+        self.imu_thread = MutuallyExclusiveCallbackGroup()
+        self.odom_thread = MutuallyExclusiveCallbackGroup()
+        self.error_thread = MutuallyExclusiveCallbackGroup()
+        self.joy_thread = MutuallyExclusiveCallbackGroup()
+
+        # Actuator control
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
+        self.drive_cmd = AckermannDriveStamped()
 
         ### Get sensor measurements ###
         #
         # Get IMU measurement
-        self.velocity_subscriber = self.create_subscription(Imu, IMU_TOPIC_NAME, self.imu_measurement, 10)
-        self.velocity_subscriber
-
-        # Get GPS/Lidar measurements
-        self.pose_subscriber = self.create_subscription(Pose, POSE_TOPIC_NAME, self.pose_measurement, 10)
-        self.pose_subscriber
+        self.imu_subscriber = self.create_subscription(Imu, IMU_TOPIC_NAME, self.imu_measurement, self.QUEUE_SIZE, callback_group=self.imu_thread)
+        self.imu_subscriber
 
         # Get Odometry measurements
-        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, 10)
+        self.odom_subscriber = self.create_subscription(Odometry, ODOM_TOPIC_NAME, self.odom_measurement, self.QUEUE_SIZE, callback_group=self.odom_thread)
         self.odom_subscriber
 
-        # Get Reference Trajectory
-        self.path_subscriber = self.create_subscription(Path, PATH_TOPIC_NAME, self.set_path, 10)
-        self.path_subscriber
+        # Error subscriber
+        self.error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE, callback_group=self.error_thread)
+        self.error_subscriber
 
-        # TODO: Make compatible with Camera Navigation via: Lane detection
-        # Get road marker error measurements from camera
-        # self.pose_error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.camera_measurment, 10)
-        # self.pose_error_subscriber
+        # Get Joystick commands
+        self.joy_subscriber = self.create_subscription(AckermannDriveStamped, JOY_TOPIC_NAME, self.set_joy_command, self.QUEUE_SIZE, callback_group=self.joy_thread)
+        self.joy_subscriber
 
-        ### Controller and State Estimate modules ###
-        self.car_model = CarModel()
-        self.lqr_calc = LQRDesign(self.car_model)
-        self.kalman_calc = LinearKalmanFilter()
-        self.P = np.diag([1, 1, 1, 1])
-        self.Qo = np.diag([1, 1, 1, 1])
-        self.Ro = [0.1]
-        self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
-        self.state_measurement = self.x0
-        self.state_est = self.x0
+        self.start_time = time.time()
+        self.current_time = self.get_clock().now().to_msg()
 
-        # Filtered states
+        # Sensor measurements
         self.x = 0
         self.y = 0
         self.yaw = 0
@@ -98,6 +118,17 @@ class LqgController(Node):
         self.y_path = []
         self.yaw_path = []
 
+        # Controller and State Estimate modules
+        self.car_model = CarModel()
+        self.lqr_calc = LQRDesign(self.car_model)
+        self.kalman_calc = LinearKalmanFilter()
+        self.P = np.diag([1, 1, 1, 1])
+        self.Qo = np.diag([1, 1, 1, 1])
+        self.Ro = [0.1]
+        self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
+        self.state_measurement = self.x0
+        self.state_est = self.x0
+
         # Calculated states
         self.ecg = 0  # cross-track error
         self.theta_e = 0  # heading error
@@ -112,14 +143,20 @@ class LqgController(Node):
                 ('max_speed', 5),
                 ('min_speed', 0.1),
                 ('max_right_steering', 0.4),
-                ('max_left_steering', -0.4)
+                ('max_left_steering', -0.4),
+                ('data_out_location', self.data_out_location_default),
+                ('data_out_name', self.data_out_name_default )
             ])
         self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
-        self.zero_speed=self.get_parameter('zero_speed').value  # should be around 0
-        self.max_speed=self.get_parameter('max_speed').value  # between [0,5] m/s
-        self.min_speed=self.get_parameter('min_speed').value  # between [0,5] m/s 
-        self.max_right_steering=self.get_parameter('max_right_steering').value  # negative(max_left) 
-        self.max_left_steering=self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
+        self.zero_speed = self.get_parameter('zero_speed').value  # should be around 0
+        self.max_speed = self.get_parameter('max_speed').value  # between [0,5] m/s
+        self.min_speed = self.get_parameter('min_speed').value  # between [0,5] m/s 
+        self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
+        self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
+        self.data_out_location = self.get_parameter('data_out_location').value
+        self.data_out_name = self.get_parameter('data_out_name').value
+
+        self.data_out = self.data_out_location+self.data_out_name+".csv"
 
         self.get_logger().info(
             f'\nerror_threshold: {self.error_threshold}'
@@ -134,8 +171,9 @@ class LqgController(Node):
         )
 
         # Call controller
-        self.Ts = 1/100  # contoller publish frequency (Hz)
+        self.Ts = 1/20  # contoller sample time
         self.create_timer(self.Ts, self.controller)
+        self.create_timer(self.Ts, self.save_csv)
 
     def imu_measurement(self, imu_data):
         # self.get_logger().info("Updating IMU")
@@ -162,22 +200,12 @@ class LqgController(Node):
         # car angular velocity
         self.yaw_rate_vesc_buffer = odom_data.twist.twist.angular.z
 
-    def pose_measurement(self, pose_data):
-        # car orientation
-        quaternion = (pose_data.pose.orientation.x, pose_data.pose.orientation.y, pose_data.pose.orientation.z, pose_data.pose.orientation.w)
-        euler = euler_from_quaternion(quaternion)
-        self.yaw_lidar_buffer = euler[2]
-
-        # car position
-        self.x_lidar_buffer = pose_data.pose.position.x
-        self.y_lidar_buffer = pose_data.pose.position.y
-        # self.get_logger().info(f"Updating POSE (x): ({self.x})")
-
-    def set_path(self, path_data):
-        # path coordinates (GLOBAL)
-        self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
-        self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
-        # self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
+    def error_measurement(self, error_data):
+        error_data_check = np.array([error_data.data[0], error_data.data[1], error_data.data[2]])
+        if not (np.isnan(error_data_check).any()):
+            self.e_y_buffer = error_data.data[0]
+            self.e_x_buffer = error_data.data[1]
+            self.e_theta_buffer = error_data.data[2]
 
     def set_joy_command(self, joy_data):
         self.joy_speed_buffer = joy_data.drive.speed
@@ -228,13 +256,15 @@ class LqgController(Node):
         # car angular speed
         self.yaw_rate = float(np.mean([self.yaw_rate_imu_buffer, self.yaw_rate_vesc_buffer]))
         
-        # car coordinates
-        self.x = float(np.mean([self.x_lidar_buffer, self.x_vesc_buffer]))
-        self.y = float(np.mean([self.y_lidar_buffer, self.y_vesc_buffer]))
-
         # car linear speed
         self.vx = self.vx_vesc_buffer
         self.vy = self.vy_vesc_buffer
+
+        # error data from lidar
+        self.e_y = self.e_y_buffer
+        self.e_x = self.e_x_buffer
+        self.e_theta_m1 = self.e_theta
+        self.e_theta = self.e_theta_buffer
 
         # manual control
         self.joy_speed = self.joy_speed_buffer 
@@ -242,6 +272,12 @@ class LqgController(Node):
 
         # time
         self.current_time = self.get_clock().now().to_msg()
+
+        # update states
+        self.state_measurement[0][0] = self.e_y
+        self.state_measurement[1][0] = self.vy + self.vx * math.sin(self.e_theta)
+        self.state_measurement[2][0] = self.e_theta
+        self.state_measurement[3][0] = (self.e_theta - self.e_theta_m1) / self.Ts
 
 
     def update_gains(self):
@@ -254,8 +290,8 @@ class LqgController(Node):
         e_cg, theta_path = self.get_cross_track_error()
         theta_e_k = theta_path - self.yaw
         self.state_measurement[0][0] = e_cg
-        self.state_measurement[1][0] = self.vy + self.vx * math.sin(theta_e_k)
-        self.state_measurement[2][0] = theta_e_k
+        self.state_measurement[1][0] = self.vy + self.vx * math.sin(self.e_theta)
+        self.state_measurement[2][0] = self.e_theta
         self.state_measurement[3][0] = (theta_e_k - theta_e_km1) / self.Ts
         self.get_logger().info(f"states: {self.state_measurement}")
 
@@ -268,9 +304,13 @@ class LqgController(Node):
 
         states:
         -ecg (cross-trackk error from center of gravity (cg))
+            -state_measurement[0][0]
         -ecg_dot (cross-trackk error rate from cg)
+            -state_measurement[1][0]
         -theta_e (heading error)
+            -state_measurement[2][0]
         -theta_e_dot (heading error rate)
+            -state_measurement[3][0]
 
         inputs:
         -delta (steering angle)
@@ -289,16 +329,13 @@ class LqgController(Node):
 
         # Steering LQR
         self.get_logger().info("Here 2")
-        steering_float_raw = -np.dot(K[0], self.state_est).flat[0]
+        self.delta_raw = -np.dot(K[0], self.state_est).flat[0]
+        delta = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling
-        tracking_error = self.state_measurement[0][0]
+        normalized_delta = delta / self.max_right_steering
         self.inf_throttle = self.min_throttle - (self.min_throttle - self.max_throttle) / (1 - self.error_threshold)
-        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(tracking_error) + self.inf_throttle
-
-        # Clamp control inputs
-        # FIXME: need to convert to radians and m/s respectively 
-        steering_float = self.clamp(steering_float_raw, self.max_right_steering, self.max_left_steering)
+        throttle_float_raw = ((self.min_throttle - self.max_throttle) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
         throttle_float = self.clamp(throttle_float_raw, self.max_throttle, self.min_throttle)
 
         # Get Current Measurement
@@ -312,20 +349,47 @@ class LqgController(Node):
         try:
             # publish drive control signal
             self.drive_cmd.header.stamp = self.current_time
-            self.drive_cmd.header.frame_id = 'base_link'
+            self.drive_cmd.header.frame_id = self.frame_id
             self.drive_cmd.drive.speed = speed
             self.drive_cmd.drive.steering_angle = delta
             self.drive_pub.publish(self.drive_cmd)
 
         except KeyboardInterrupt:
             self.drive_cmd.header.stamp = self.current_time
-            self.drive_cmd.header.frame_id = 'base_link'
+            self.drive_cmd.header.frame_id = self.frame_id
             self.drive_cmd.drive.speed = 0
             self.drive_cmd.drive.steering_angle = 0
             self.drive_pub.publish(self.drive_cmd)
 
         # Get new sensor measurements
         self.update_states()
+
+        # write out
+        self.compare_manual_and_lqr()
+        
+    def compare_manual_and_lqr(self):
+        self.df = pd.concat([self.df, pd.DataFrame.from_records([{\
+            'time': time.time() - self.start_time, \
+            'joy_delta': self.joy_steering, \
+            'joy_speed': self.joy_speed, \
+            'lqg_delta': self.delta_raw, \
+            'lqg_speed': self.drive_cmd.drive.speed, \
+            'lqg_e_cg': self.state_measurement[0][0], \
+            'lqg_e_cg_dot': self.state_measurement[1][0], \
+            'lqg_theta_e': self.state_measurement[2][0], \
+            'lqg_theta_e_dot': self.state_measurement[3][0], \
+            'lqg_e_cg_hat': self.self.state_est[0][0], \
+            'lqg_e_cg_dot_hat': self.self.state_est[1][0], \
+            'lqg_theta_e_hat': self.self.state_est[2][0], \
+            'lqg_theta_e_dot_hat': self.self.state_est[3][0], \
+            'yaw': self.yaw, \
+            'yaw_rate': self.yaw_rate, \
+            'vx': self.vx, \
+            'vy': self.vy
+            }])])
+
+    def save_csv(self):
+        self.df.to_csv(self.data_out, index = False)
 
     def clamp(self, value, upper_bound, lower_bound=None):
         if lower_bound is None:

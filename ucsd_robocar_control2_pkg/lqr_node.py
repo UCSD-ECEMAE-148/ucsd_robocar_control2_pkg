@@ -18,21 +18,23 @@ import math
 import time
 
 NODE_NAME = 'lqr_node'
+
 # ACTUATOR_TOPIC_NAME = '/vesc/high_level/ackermann_cmd_mux/output'
+# ACTUATOR_TOPIC_NAME = '/teleop'
 ACTUATOR_TOPIC_NAME = '/lqr_controller_test'
 JOY_TOPIC_NAME = '/teleop'
 
 # PATH_TOPIC_NAME = '/global_trajectory'
-# ODOM_TOPIC_NAME = '/odom'
 POSE_TOPIC_NAME = '/slam_out_pose'
 PATH_TOPIC_NAME = '/trajectory'
+# ODOM_TOPIC_NAME = '/odom'
 
 class LqrController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
+        self.frame_id = 'base_link'
         self.QUEUE_SIZE = 10
         self.data_file = "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/test.csv"
-
         self.df = pd.DataFrame(columns = ['time', 'joy_delta', 'joy_speed', 'lqr_delta', 'lqr_speed'])
          
         # self.controller_thread = MutuallyExclusiveCallbackGroup()
@@ -60,8 +62,8 @@ class LqrController(Node):
         self.path_subscriber
 
         # Get Joystick commands
-        self.path_subscriber = self.create_subscription(AckermannDriveStamped, JOY_TOPIC_NAME, self.set_joy_command, self.QUEUE_SIZE, callback_group=self.joy_thread)
-        self.path_subscriber
+        self.joy_subscriber = self.create_subscription(AckermannDriveStamped, JOY_TOPIC_NAME, self.set_joy_command, self.QUEUE_SIZE, callback_group=self.joy_thread)
+        self.joy_subscriber
 
         self.start_time = time.time()
         self.current_time = self.get_clock().now().to_msg()
@@ -76,6 +78,7 @@ class LqrController(Node):
         self.joy_speed = 0
         self.joy_steering = 0
 
+        # Sensor measurements Buffer
         self.x_buffer = 0
         self.y_buffer = 0
         self.yaw_buffer = 0
@@ -85,18 +88,18 @@ class LqrController(Node):
         self.joy_speed_buffer = 0
         self.joy_steering_buffer = 0
 
+        # Path coordinates
+        self.x_path = []
+        self.y_path = []
+        self.yaw_path = []
+        self.line_error_threshold = 0.001 # (m)
+
         # Controller modules
         self.car_model = CarModel()
         self.lqr_calc = LQRDesign(self.car_model)
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.sys = self.car_model.build_error_model(self.vx)
-
-        # Path coordinates
-        self.x_path = []
-        self.y_path = []
-        self.yaw_path = []
-        self.line_error_threshold = 0.001 # (m)
 
         # Calculated states
         self.ecg = 0  # cross-track error
@@ -182,10 +185,7 @@ class LqrController(Node):
         self.vy_buffer = odom_data.twist.twist.linear.y
 
     def pose_measurement(self, pose_data):
-        # TODO: what is frequency of data coming in?
-        
         # car orientation
-        # FIXME: confirm coordinate axes
         quaternion = (pose_data.pose.orientation.x, pose_data.pose.orientation.y, pose_data.pose.orientation.z, pose_data.pose.orientation.w)
         euler = euler_from_quaternion(quaternion)
         self.yaw_buffer = euler[2]
@@ -196,15 +196,6 @@ class LqrController(Node):
         # self.get_logger().info(f"Updating POSE (x): ({self.x})")
 
     def set_path(self, path_data):
-        # TODO: Currently not working with Lidar Nav
-
-        # path orientation 
-        # FIXME: confirm coordinate axes
-        # quaternion = (path_data.poses[0].pose.orientation.x, path_data.poses[0].pose.orientation.y,
-        #               path_data.poses[0].pose.orientation.z, path_data.poses[0].pose.orientation.w)
-        # euler = euler_from_quaternion(quaternion)
-        # self.yaw_path = euler[2]
-
         # path coordinates (GLOBAL)
         self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
         self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
@@ -332,14 +323,14 @@ class LqrController(Node):
         try:
             # publish drive control signal
             self.drive_cmd.header.stamp = self.current_time
-            self.drive_cmd.header.frame_id = 'base_link'
+            self.drive_cmd.header.frame_id = self.frame_id
             self.drive_cmd.drive.speed = speed
             self.drive_cmd.drive.steering_angle = delta
             self.drive_pub.publish(self.drive_cmd)
 
         except KeyboardInterrupt:
             self.drive_cmd.header.stamp = self.current_time
-            self.drive_cmd.header.frame_id = 'base_link'
+            self.drive_cmd.header.frame_id = self.frame_id
             self.drive_cmd.drive.speed = 0
             self.drive_cmd.drive.steering_angle = 0
             self.drive_pub.publish(self.drive_cmd)
@@ -384,7 +375,7 @@ def main(args=None):
     except KeyboardInterrupt:
         lqr_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
         lqr_publisher.drive_cmd.header.stamp = lqr_publisher.current_time
-        lqr_publisher.drive_cmd.header.frame_id = 'base_link'
+        lqr_publisher.drive_cmd.header.frame_id = lqr_publisher.frame_id
         lqr_publisher.drive_cmd.drive.speed = 0.0
         lqr_publisher.drive_cmd.drive.steering_angle = 0.0
         lqr_publisher.drive_pub.publish(lqr_publisher.drive_cmd)
