@@ -33,6 +33,7 @@ JOY_TOPIC_NAME = '/teleop'
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
+        self.debug = False
         self.frame_id = 'base_link'
         self.QUEUE_SIZE = 10
         self.data_out_location_default = "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/"
@@ -296,20 +297,21 @@ class LqgController(Node):
         # Get optimal state estimates
         self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_sim, self.P, self.Qo, self.Ro)
         
-        # self.get_logger().info(
-        #     f'\n e_cg: {self.state_measurement[0][0]}'
-        #     f'\n e_cg_dot: {self.state_measurement[1][0]}'
-        #     f'\n theta_e: {self.state_measurement[2][0]}'
-        #     f'\n theta_e_dot: {self.state_measurement[3][0]}'
-        #     f'\n yaw: {self.yaw}'
-        #     f'\n yaw_rate: {self.yaw_rate}'
-        #     f'\n vx: {self.vx}'
-        #     f'\n vy: {self.vy}'
-        #     f'\n joy_speed: {self.joy_speed}'
-        #     f'\n joy_steering: {self.joy_steering}'
-        #     f'\n y: {self.y}'
-        #     f'\n state_est: {self.state_est}'
-        # )
+        if self.debug:
+            self.get_logger().info(
+                f'\n e_cg: {self.state_measurement[0][0]}'
+                f'\n e_cg_dot: {self.state_measurement[1][0]}'
+                f'\n theta_e: {self.state_measurement[2][0]}'
+                f'\n theta_e_dot: {self.state_measurement[3][0]}'
+                f'\n yaw: {self.yaw}'
+                f'\n yaw_rate: {self.yaw_rate}'
+                f'\n vx: {self.vx}'
+                f'\n vy: {self.vy}'
+                f'\n joy_speed: {self.joy_speed}'
+                f'\n joy_steering: {self.joy_steering}'
+                f'\n y: {self.y}'
+                f'\n state_est: {self.state_est}'
+            )
 
         # Publish values
         try:
