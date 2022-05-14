@@ -174,7 +174,7 @@ class LqgController(Node):
         self.create_timer(self.Ts, self.save_csv)
 
     def imu_measurement(self, imu_data):
-        # self.get_logger().info("Updating IMU")
+        self.get_logger().info("Updating IMU")
         quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
         
