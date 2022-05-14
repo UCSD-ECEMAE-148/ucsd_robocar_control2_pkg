@@ -25,9 +25,6 @@ class PidController(Node):
         self.error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE)
         self.error_subscriber
 
-        # Speed subscriber
-
-
         # setting up message structure for vesc-ackermann msg
         self.current_time = self.get_clock().now().to_msg()
         self.frame_id = 'base_link'
@@ -48,7 +45,8 @@ class PidController(Node):
                 ('max_speed', 5),
                 ('min_speed', 0.1),
                 ('max_right_steering', 0.4),
-                ('max_left_steering', -0.4)
+                ('max_left_steering', -0.4),
+                ('Ts', 0.05)
             ])
         self.Kp = self.get_parameter('Kp_steering').value
         self.Ki = self.get_parameter('Ki_steering').value
@@ -63,6 +61,7 @@ class PidController(Node):
         self.min_speed = self.get_parameter('min_speed').value  # between [0,5] m/s 
         self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
         self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
+        self.Ts = self.get_parameter('Ts').value # controller sample time
 
         # initializing PID control
         self.e_y_buffer = 0
@@ -90,9 +89,9 @@ class PidController(Node):
             f'\n min_speed: {self.min_speed}'
             f'\n max_right_steering: {self.max_right_steering}'
             f'\n max_left_steering: {self.max_left_steering}'
+            f'\n Ts: {self.Ts}'
         )
         # Call controller
-        self.Ts = 0.01  # contoller sample time
         self.create_timer(self.Ts, self.controller)
 
     def error_measurement(self, error_data):

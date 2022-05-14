@@ -174,12 +174,12 @@ class LqgController(Node):
         self.create_timer(self.Ts, self.save_csv)
 
     def imu_measurement(self, imu_data):
-        # self.get_logger().info(f"Updating IMU: {self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
         quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
         
         self.yaw_imu_buffer = euler[2]
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
+        self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
     def odom_measurement(self, odom_data):
         # car position
