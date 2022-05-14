@@ -18,11 +18,11 @@ class LQRDesign:
     def build_system(self, car_model, Vx):
         self.sysd = car_model.build_error_model(Vx)
 
-    def compute_error_weights(self):
-        self.Q = np.diag([2.0, 0.15, 1, 1])  # FIXME: update to vary as function of Vx
-        self.R = np.diag([0.001])
-
     def compute_weights(self):
+        self.Q = np.diag([10.0, 1.00, 10.0, 1.0])  # FIXME: update to vary as function of Vx
+        self.R = np.diag([0.02])
+
+    def compute_weights_identity(self):
         self.Q = np.identity(self.num_states, dtype=float)  # weights for outputs (states)
         self.R = np.identity(self.num_inputs, dtype=float)  # weights for inputs
 

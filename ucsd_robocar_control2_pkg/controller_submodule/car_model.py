@@ -9,7 +9,7 @@ import math
 
 class CarModel:
     def __init__(self, car_parameter_input_path=None):
-        self.Ts = 0.01
+        self.Ts = 1/20
         self.mu = 0.01  # FIXME coeff of friction of driving surface
         self.g = 9.81  # gravity acceleration
         self.m = 5  # FIXME total mass (kg)

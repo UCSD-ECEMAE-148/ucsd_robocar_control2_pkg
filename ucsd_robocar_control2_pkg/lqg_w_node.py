@@ -119,8 +119,8 @@ class LqgController(Node):
         self.kalman_calc = LinearKalmanFilter()
         self.ss_simulation = StateSpaceSimulation()
         self.P = np.diag([0, 0, 0, 0])
-        self.Qo = np.diag([0.1, 0.1, 0.1, 0.1])
-        self.Ro = [0.1]
+        self.Qo = np.diag([5.0E-3, 1.0E-2, 1.0E-6, 1.0E-6])
+        self.Ro = np.diag([1.0E-3, 5.0E-1])
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.state_est = self.x0
@@ -136,51 +136,50 @@ class LqgController(Node):
         self.declare_parameters(
             namespace='',
             parameters=[
-                ('error_threshold', 0.15),
                 ('zero_speed', 0.0),
                 ('max_speed', 5),
                 ('min_speed', 0.1),
+                ('error_threshold', 0.15),
                 ('max_right_steering', 0.4),
                 ('max_left_steering', -0.4),
+                ('Ts', 0.05 ),
                 ('data_out_location', self.data_out_location_default),
                 ('data_out_name', self.data_out_name_default )
             ])
-        self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
         self.zero_speed = self.get_parameter('zero_speed').value  # should be around 0
         self.max_speed = self.get_parameter('max_speed').value  # between [0,5] m/s
         self.min_speed = self.get_parameter('min_speed').value  # between [0,5] m/s 
+        self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
         self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
         self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
+        self.Ts = self.get_parameter('Ts').value
         self.data_out_location = self.get_parameter('data_out_location').value
         self.data_out_name = self.get_parameter('data_out_name').value
 
         self.data_out = self.data_out_location+self.data_out_name+".csv"
 
         self.get_logger().info(
-            f'\nerror_threshold: {self.error_threshold}'
-            f'\nzero_speed: {self.zero_speed}'
-            f'\nmax_speed: {self.max_speed}'
-            f'\nmin_speed: {self.min_speed}'
-            f'\nmax_right_steering: {self.max_right_steering}'
-            f'\nmax_left_steering: {self.max_left_steering}'
-            f'\nself.state_measurement: {self.state_measurement}'
-            f'\ntype(self.state_measurement): {type(self.state_measurement)}'
-            f'\nshape(self.state_measurement): {self.state_measurement.shape}'
+            f'\n zero_speed: {self.zero_speed}'
+            f'\n max_speed: {self.max_speed}'
+            f'\n min_speed: {self.min_speed}'
+            f'\n error_threshold: {self.error_threshold}'
+            f'\n max_right_steering: {self.max_right_steering}'
+            f'\n max_left_steering: {self.max_left_steering}'
+            f'\n controller sample time: {self.Ts}'
+            f'\n data_out file: {self.data_out}'
         )
 
         # Call controller
-        self.Ts = 1/20  # contoller sample time
         self.create_timer(self.Ts, self.controller)
         self.create_timer(self.Ts, self.save_csv)
 
     def imu_measurement(self, imu_data):
-        self.get_logger().info("Updating IMU")
+        # self.get_logger().info(f"Updating IMU: {self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
         quaternion = (imu_data.orientation.x, imu_data.orientation.y, imu_data.orientation.z, imu_data.orientation.w)
         euler = euler_from_quaternion(quaternion)
         
         self.yaw_imu_buffer = euler[2]
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
-        self.get_logger().info(f"Updating IMU: {self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
     def odom_measurement(self, odom_data):
         # car position

@@ -6,6 +6,6 @@ lqg_w_node:
     error_threshold : 0.09 
     max_right_steering : 0.4 
     max_left_steering : -0.4
-    Ts : 0.01
-    data_out_name : "kalman_test2"
+    Ts : 0.05
+    data_out_name : "kalman_test4"
     data_out_location : "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/"
