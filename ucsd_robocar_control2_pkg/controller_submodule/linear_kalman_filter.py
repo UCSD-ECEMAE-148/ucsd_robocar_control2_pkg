@@ -125,7 +125,7 @@ class LinearKalmanFilter:
         C = np.array(C)
         D = np.array(D)
         x0 = np.array(x0)
-        u = np.array([u])
+        u = np.array(u)
         y = np.array(y)
         P0 = np.array(P0)
         Qo = np.array(Qo)
@@ -135,53 +135,49 @@ class LinearKalmanFilter:
         d_num_rows, d_num_cols = D.shape
         self.Pp = P0
         self.xhat = x0
-        self.sample_size = u.size
-        self.xhat_mat = np.zeros([a_num_rows, self.sample_size], dtype=float)
-        self.yhat_mat = np.zeros([d_num_rows, self.sample_size], dtype=float)
-        self.K_mat = np.zeros([a_num_rows, self.sample_size], dtype=float)
 
         A_t = A.transpose()
         C_t = C.transpose()
         num_states = A.shape[0]
 
         try:
-            # self.xhat_mat[:, k] = self.xhat.transpose()  # store the estimates
-            # # Time update
-            # self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1),np.dot(B, u[k]))  # predicted state estimate
-            # self.Pp = np.add(np.dot(np.dot(A, self.Pp), A_t), Qo)  # covariance
-            # # # Measurement update
-            # K = np.dot(np.dot(np.dot(A, self.Pp), C_t),np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro)))  # Kalman predictor gain
-            # self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1), np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
-            # self.Pp = np.subtract(self.Pp, np.dot(np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C), self.Pp))
-            # # filtered output prediction
-            # self.yhat = np.dot(C, self.xhat)
-            
-            
-            self.xhat_mat[:, k] = self.xhat.transpose()  # store the estimates
+            # Kalman predictor gain
+            K = np.linalg.multi_dot([A, self.Pp, C_t, np.linalg.inv(np.add(np.linalg.multi_dot([C, self.Pp, C_t]), Ro))])
+
+            # filtered state estimate
+            self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1), np.add(np.dot(B, u), np.dot(K, y).reshape(num_states, 1)))
+
+            # Predicted error covariance
+            self.Pp = \
+                np.subtract(\
+                    np.linalg.multi_dot([A, self.Pp, A_t]), \
+                    np.add(\
+                        np.linalg.multi_dot([A, self.Pp, C_t, np.linalg.inv(np.add(np.linalg.multi_dot([C, self.Pp, C_t]), Ro)), C, self.Pp, A_t]), \
+                        Qo))
             
             # Kalman predictor gain
-            K = np.dot(np.dot(np.dot(A, self.Pp), C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))) 
-            
-            # filtered state estimate
-            self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1), np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
-            
-            
+            # K = np.dot(np.dot(np.dot(A, self.Pp), C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))) 
             # Predicted error covariance
-            self.Pp = np.add(np.dot(np.dot(A, self.Pp), A_t), Qo)  # covariance
-            self.Pp = np.subtract(\
-                np.dot(np.dot(A, self.Pp), \
-                np.dot(\
-                    np.dot(\
-                        np.dot(\
-                            np.dot(self.Pp, C_t), \
-                            np.linalg.inv(
-                                np.add(\
-                                np.dot(np.dot(C, self.Pp), \
-                                C_t), \
-                            Ro)\
-                        )), \
-                    C), \
-                self.Pp))
+            # self.Pp = \
+            #     np.subtract(\
+            #         np.dot(A, np.dot(self.Pp, A_t), \
+            #         np.add(\
+            #             np.dot(np.dot(np.dot(A, np.dot(self.Pp, C_t)), np.linalg.inv(np.add(np.dot(C, np.dot(self.Pp, C_t))), Ro), np.dot(C, np.dot(self.Pp, A_t)))),
+            #             Qo)
+            #         Pp = A * Pp * A' - (A * Pp * C') / (C * Pp * C' + Ro) * C * Pp * A' + Qo;
+            
+            #         Pp_1 = A * Pp * A'
+            #         Pp_2 = (A * Pp * C') / (C * Pp * C' + Ro) * C * Pp * A'
+            #         Pp_3 = Qo
+            
+            #         Pp = Pp_1 - Pp_2 + Pp_3
+            
+            #         Pp = [A * Pp * A'] 
+            #              -
+            #              [(A * Pp * C') 
+            #              * (C * Pp * C' + Ro)^-1 
+            #              * C * Pp * A'
+            #              + Qo];
             
             # filtered output prediction
             self.yhat = np.dot(C, self.xhat)
@@ -189,35 +185,35 @@ class LinearKalmanFilter:
             print("Kalman filter: Exception occured")
             
         if self.debug:
-            print(f"A: {A}")
-            print(f"B: {B}")
-            print(f"C: {C}")
-            print(f"D: {D}")
-            print(f"self.x0: {x0}")
-            print(f"u: {u}")
-            print(f"y: {y}")
-            print(f"K: {P0}")
-            print(f"y: {y}")
-            print(f"self.xhat: {self.xhat}")
-            print(f"u[0]: {u}")
-            print(f"np.dot(B, u[k]): {np.dot(B, u[0])}")
-            print(f"K: {K}")
-            print(f"y[:, k]: {y[:, 0]}")
-            print(f"np.dot(K, y[:, k]): {np.dot(K, y[:, 0])}")
-            print(f"np.dot(K, y[:, k]).reshape(num_states, 1)): {np.dot(K, y[:, 0]).reshape(num_states, 1)}")
-            print(f"np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u[0]), np.dot(K, y[:, 0]).reshape(num_states, 1))}")
-            print(f"self.xhat_mat: {self.xhat_mat}")
-            print(f"self.xhat: {self.xhat}")
-            print(f"A: {A}")
-            print(f"self.xhat: {self.xhat}")
-            print(f"np.dot(A, self.xhat) 2: {np.dot(A, self.xhat)}")
-            print(f"B: {B}")
-            print(f"u[k]: {u[k]}")
-            print(f"np.dot(B, u[k]): {np.dot(B, u[k])}")
-            print(f"K_mat: {self.K_mat}")
-            print(f"K: {K}")
-            print(f"y: {self.yhat}")
-            print(f"y_mat: {self.yhat_mat}")
+            print(f"A: {A}"
+            f"\n B: {B}"
+            f"\n C: {C}"
+            f"\n D: {D}"
+            f"\n self.x0: {x0}"
+            f"\n u: {u}"
+            f"\n y: {y}"
+            f"\n K: {P0}"
+            f"\n y: {y}"
+            f"\n self.xhat: {self.xhat}"
+            f"\n u[0]: {u}"
+            f"\n np.dot(B, u[k]): {np.dot(B, u)}"
+            f"\n K: {K}"
+            f"\n y[:, k]: {y[:, 0]}"
+            f"\n np.dot(K, y[:, k]): {np.dot(K, y)}"
+            f"\n np.dot(K, y[:, k]).reshape(num_states, 1)): {np.dot(K, y).reshape(num_states, 1)}"
+            f"\n np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1))): {np.add(np.dot(B, u), np.dot(K, y).reshape(num_states, 1))}"
+            f"\n self.xhat_mat: {self.xhat_mat}"
+            f"\n self.xhat: {self.xhat}"
+            f"\n A: {A}"
+            f"\n self.xhat: {self.xhat}"
+            f"\n np.dot(A, self.xhat) 2: {np.dot(A, self.xhat)}"
+            f"\n B: {B}"
+            f"\n u[k]: {u}"
+            f"\n np.dot(B, u[k]): {np.dot(B, u)}"
+            f"\n K_mat: {self.K_mat}"
+            f"\n K: {K}"
+            f"\n y: {self.yhat}"
+            f"\n y_mat: {self.yhat_mat}")
         return self.xhat, self.Pp
 
 
