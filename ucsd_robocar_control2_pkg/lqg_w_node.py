@@ -24,7 +24,7 @@ NODE_NAME = 'lqg_w_node'
 # ACTUATOR_TOPIC_NAME = '/teleop'
 ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
-IMU_TOPIC_NAME = '/imu'
+IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
 JOY_TOPIC_NAME = '/teleop'
@@ -180,6 +180,7 @@ class LqgController(Node):
         
         self.yaw_imu_buffer = euler[2]
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
+        self.get_logger().info(f"Updating IMU: {self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
     def odom_measurement(self, odom_data):
         # car position
@@ -391,8 +392,10 @@ def main(args=None):
         lqg_publisher.drive_cmd.drive.steering_angle = 0.0
         lqg_publisher.drive_pub.publish(lqg_publisher.drive_cmd)
         time.sleep(1)
+        lqg_publisher.save_csv()
+        lqg_publisher.get_logger().info(f'Saving data to: {lqg_publisher.data_out}.')
+        executor.shutdown()
         lqg_publisher.destroy_node()
-        rclpy.shutdown()
         lqg_publisher.get_logger().info(f'{NODE_NAME} shut down successfully.')
 
 
