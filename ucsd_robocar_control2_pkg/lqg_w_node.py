@@ -274,6 +274,9 @@ class LqgController(Node):
         -steering_angle (radians)
         -speed (m/s)
         """
+        
+        # Get new sensor measurements
+        self.get_latest_measurements()
 
         # Update Car model LTV system --- A(Vx)
         self.sys = self.car_model.build_error_model(self.vx, 2)
@@ -295,7 +298,7 @@ class LqgController(Node):
         self.y_sim = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_sim, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf_step(self.sys, self.state_est, self.joy_steering, self.y_sim, self.P, self.Qo, self.Ro)
         
         if self.debug:
             self.get_logger().info(
@@ -328,9 +331,6 @@ class LqgController(Node):
             self.drive_cmd.drive.speed = self.zero_speed
             self.drive_cmd.drive.steering_angle = 0
             self.drive_pub.publish(self.drive_cmd)
-
-        # Get new sensor measurements
-        self.get_latest_measurements()
 
         # write out
         self.compare_manual_and_lqr()
