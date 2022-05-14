@@ -71,7 +71,7 @@ class LqgController(Node):
         ### Get sensor measurements ###
         #
         # Get IMU measurement
-        self.imu_subscriber = self.create_subscription(Imu, IMU_TOPIC_NAME, self.imu_measurement, self.QUEUE_SIZE, callback_group=self.imu_thread)
+        self.imu_subscriber = self.create_subscription(Imu, IMU_TOPIC_NAME, self.imu_measurement, rclpy.qos.qos_profile_sensor_data, callback_group=self.imu_thread)
         self.imu_subscriber
 
         # Get Odometry measurements
