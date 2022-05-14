@@ -276,7 +276,7 @@ class LqgController(Node):
         """
 
         # Update Car model LTV system --- A(Vx)
-        self.sys = self.car_model.build_error_model(self.vx)
+        self.sys = self.car_model.build_error_model(self.vx, 2)
 
         # get updated gains
         K = self.update_gains()
@@ -292,7 +292,7 @@ class LqgController(Node):
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
-        self.y_sim = self.ss_simulation.get_output(self.sys, self.state_measurement, self.joy_steering)
+        self.y_sim = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
         self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_sim, self.P, self.Qo, self.Ro)

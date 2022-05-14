@@ -51,6 +51,21 @@ class LinearKalmanFilter:
 
         for k in range(0, self.sample_size):
             try:
+                # self.xhat_mat[:, k] = self.xhat.transpose()  # store the estimates
+
+                # # Time update
+                # self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1),np.dot(B, u[k]))  # predicted state estimate
+                # self.Pp = np.add(np.dot(np.dot(A, self.Pp), A_t), Qo)  # covariance
+
+                # # # Measurement update
+                # K = np.dot(np.dot(np.dot(A, self.Pp), C_t),np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro)))  # Kalman predictor gain
+                # self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1), np.add(np.dot(B, u[k]), np.dot(K, y[:, k]).reshape(num_states, 1)))
+                # self.Pp = np.subtract(self.Pp, np.dot(np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C), self.Pp))
+
+                # # filtered output prediction
+                # self.yhat = np.dot(C, self.xhat)
+                
+                
                 self.xhat_mat[:, k] = self.xhat.transpose()  # store the estimates
 
                 # Time update
@@ -64,6 +79,7 @@ class LinearKalmanFilter:
 
                 # filtered output prediction
                 self.yhat = np.dot(C, self.xhat)
+                
                 
             except:
                 pass
