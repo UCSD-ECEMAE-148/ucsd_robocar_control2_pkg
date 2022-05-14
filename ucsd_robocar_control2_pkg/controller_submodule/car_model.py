@@ -13,14 +13,14 @@ class CarModel:
         self.mu = 0.01  # FIXME coeff of friction of driving surface
         self.g = 9.81  # gravity acceleration
         self.m = 5  # FIXME total mass (kg)
-        self.mf = self.m * 0.42  # FIXME mass on front axel
-        self.mr = self.m * 0.58  # FIXME mass on rear axel
         self.L = 0.325  # FIXME wheel base (meters)
-        self.cf = 6.0  # FIXME front tire cornering stiffness
-        self.cr = 18.0  # FIXME rear tire cornering stiffness
-        self.Lf = self.L * (1 - self.mf / self.m)  # distance from CG to front axel
-        self.Lr = self.L * (1 - self.mr / self.m)  # distance from CG to rear axel
-        self.Iz = self.Lf * self.Lr * (self.mf + self.mr)  # moment of inertia
+        self.Lf = self.L * (7/11)  # distance from CG to front axel
+        self.Lr = self.L * (6/11)  # distance from CG to rear axel
+        self.mf = self.m * (1 - self.Lf / self.L)  # FIXME mass on front axel
+        self.mr = self.m * (1 - self.Lr / self.L)  # FIXME mass on rear axel
+        self.Iz = (self.Lf**2 * self.mf) + (self.Lr**2 * self.mr) # moment of inertia
+        self.cf = 0.4  # FIXME front tire cornering stiffness
+        self.cr = 2.65  # FIXME rear tire cornering stiffness
         self.sysd = 0
         self.car_parameter_input_path = car_parameter_input_path
         if self.car_parameter_input_path is not None:
