@@ -144,6 +144,8 @@ class LqgController(Node):
                 ('max_right_steering', 0.4),
                 ('max_left_steering', -0.4),
                 ('Ts', 0.05 ),
+                ('lateral_error_threshold', 0.0 ),
+                ('heading_error_threshold', 0.0 ),
                 ('data_out_location', self.data_out_location_default),
                 ('data_out_name', self.data_out_name_default )
             ])
@@ -156,6 +158,9 @@ class LqgController(Node):
         self.Ts = self.get_parameter('Ts').value
         self.data_out_location = self.get_parameter('data_out_location').value
         self.data_out_name = self.get_parameter('data_out_name').value
+        self.lateral_error_threshold = self.get_parameter('lateral_error_threshold').value
+        self.heading_error_threshold = self.get_parameter('heading_error_threshold').value
+        
         self.delta_normalization = max(abs(self.max_right_steering),abs(self.max_left_steering))
 
         self.data_out = self.data_out_location+self.data_out_name+".csv"
@@ -180,6 +185,12 @@ class LqgController(Node):
         euler = euler_from_quaternion(quaternion)
         
         self.yaw_imu_buffer = euler[2]
+        if self.yaw_imu_buffer >= (math.pi/2) and self.yaw_imu_buffer < math.pi:
+            self.yaw_imu_buffer = self.yaw_imu_buffer - math.pi/2
+        elif self.yaw_imu_buffer >= math.pi and self.yaw_imu_buffer < ((3/2) * math.pi):
+            self.yaw_imu_buffer = self.yaw_imu_buffer - math.pi
+        elif self.yaw_imu_buffer >= ((3/2) * math.pi) and self.yaw_imu_buffer < (2 * math.pi):
+            self.yaw_imu_buffer = self.yaw_imu_buffer - (3/2) * math.pi
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
         # self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
@@ -230,9 +241,9 @@ class LqgController(Node):
         self.vy = self.vy_vesc_buffer
 
         # error data from lidar
-        self.e_y = self.e_y_buffer
+        self.e_y = max(self.lateral_error_threshold, self.e_y_buffer)
         self.e_x = self.e_x_buffer
-        self.e_theta_m1 = self.e_theta
+        self.e_theta_m1 = max(self.heading_error_threshold, self.e_theta)
         self.e_theta = self.e_theta_buffer
 
         # manual control
