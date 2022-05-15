@@ -35,6 +35,7 @@ class LinearKalmanFilter:
         P0 = np.array(P0)
         Qo = np.array(Qo)
         Ro = np.array(Ro)
+        print(f"Q_LKF: {Qo}")
 
         a_num_rows, a_num_cols = A.shape
         d_num_rows, d_num_cols = D.shape
@@ -149,11 +150,11 @@ class LinearKalmanFilter:
 
             # Predicted error covariance
             self.Pp = \
-                np.subtract(\
-                    np.linalg.multi_dot([A, self.Pp, A_t]), \
-                    np.add(\
-                        np.linalg.multi_dot([A, self.Pp, C_t, np.linalg.inv(np.add(np.linalg.multi_dot([C, self.Pp, C_t]), Ro)), C, self.Pp, A_t]), \
-                        Qo))
+                np.add(\
+                    np.subtract(\
+                        np.linalg.multi_dot([A, self.Pp, A_t]), \
+                        (np.linalg.multi_dot([A, self.Pp, C_t, np.linalg.inv(np.add(np.linalg.multi_dot([C, self.Pp, C_t]), Ro)), C, self.Pp, A_t])) \
+                ),Qo)
             
             # Kalman predictor gain
             # K = np.dot(np.dot(np.dot(A, self.Pp), C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))) 

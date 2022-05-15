@@ -21,13 +21,13 @@ import math
 import time
 
 NODE_NAME = 'lqg_w_node'
-# ACTUATOR_TOPIC_NAME = '/teleop'
-ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+ACTUATOR_TOPIC_NAME = '/teleop'
+# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
-JOY_TOPIC_NAME = '/teleop'
+JOY_TOPIC_NAME = '/myteleop'
 
 
 class LqgController(Node):
@@ -90,9 +90,10 @@ class LqgController(Node):
         self.current_time = self.get_clock().now().to_msg()
 
         # Sensor measurements
+        self.v_min = 0.1
         self.yaw = 0
         self.yaw_rate = 0
-        self.vx = 0
+        self.vx = self.v_min
         self.vy = 0
         self.joy_speed = 0
         self.joy_steering = 0 
@@ -155,6 +156,7 @@ class LqgController(Node):
         self.Ts = self.get_parameter('Ts').value
         self.data_out_location = self.get_parameter('data_out_location').value
         self.data_out_name = self.get_parameter('data_out_name').value
+        self.delta_normalization = max(abs(self.max_right_steering),abs(self.max_left_steering))
 
         self.data_out = self.data_out_location+self.data_out_name+".csv"
 
@@ -224,7 +226,7 @@ class LqgController(Node):
         self.yaw_rate = self.yaw_rate_imu_buffer
         
         # car linear speed
-        self.vx = self.vx_vesc_buffer
+        self.vx = max(self.v_min, self.vx_vesc_buffer)
         self.vy = self.vy_vesc_buffer
 
         # error data from lidar
@@ -247,7 +249,7 @@ class LqgController(Node):
         self.state_measurement[3][0] = (self.e_theta - self.e_theta_m1) / self.Ts
 
     def update_gains(self):
-        K = self.lqr_calc.compute_single_gain_sample(self.sys)
+        K = self.lqr_calc.compute_single_gain_sample(self.vx, self.sys)
         return K
 
     def controller(self):
@@ -286,9 +288,10 @@ class LqgController(Node):
         delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling
-        normalized_delta = delta / self.max_right_steering
-        self.inf_throttle = self.min_speed - (self.min_speed - self.max_speed) / (1 - self.error_threshold)
-        speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
+        # normalized_delta = delta / self.delta_normalization
+        # self.inf_throttle = self.min_speed - (self.min_speed - self.max_speed) / (1 - self.error_threshold)
+        # speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
+        speed_raw = 0.3
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
@@ -392,8 +395,7 @@ def main(args=None):
             executor.shutdown()
             lqg_publisher.destroy_node()
     except KeyboardInterrupt:
-        executor.shutdown()
-        lqg_publisher.destroy_node()
+        pass
     finally:
         rclpy.shutdown()
 
