@@ -88,6 +88,59 @@ class LqgController(Node):
 
         self.start_time = time.time()
         self.current_time = self.get_clock().now().to_msg()
+        
+        # Declare ROS parameters
+        self.declare_parameters(
+            namespace='',
+            parameters=[
+                ('zero_speed', 0.0),
+                ('max_speed', 5),
+                ('min_speed', 0.1),
+                ('error_threshold', 0.15),
+                ('max_right_steering', 0.4),
+                ('max_left_steering', -0.4),
+                ('Ts', 0.05 ),
+                ('lateral_error_threshold', 0.0 ),
+                ('heading_error_threshold', 0.0 ),
+                ('qf1', 1.0),
+                ('qf2', 1.0),
+                ('qf3', 1.0),
+                ('qf4', 1.0),
+                ('rf1', 1.0),
+                ('rf3', 1.0),
+                ('qc1', 1.0),
+                ('qc2', 1.0),
+                ('qc3', 1.0),
+                ('qc4', 1.0),
+                ('rc1', 1.0),
+                ('data_out_location', self.data_out_location_default),
+                ('data_out_name', self.data_out_name_default )
+            ])
+        self.zero_speed = self.get_parameter('zero_speed').value  # should be around 0
+        self.max_speed = self.get_parameter('max_speed').value  # between [0,5] m/s
+        self.min_speed = self.get_parameter('min_speed').value  # between [0,5] m/s 
+        self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
+        self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
+        self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
+        self.Ts = self.get_parameter('Ts').value
+        self.lateral_error_threshold = self.get_parameter('lateral_error_threshold').value
+        self.heading_error_threshold = self.get_parameter('heading_error_threshold').value
+        self.qf1 = self.get_parameter('qf1').value
+        self.qf2 = self.get_parameter('qf2').value
+        self.qf3 = self.get_parameter('qf3').value
+        self.qf4 = self.get_parameter('qf4').value
+        self.rf1 = self.get_parameter('rf1').value
+        self.rf3 = self.get_parameter('rf3').value
+        self.qc1 = self.get_parameter('qc1').value
+        self.qc2 = self.get_parameter('qc2').value
+        self.qc3 = self.get_parameter('qc3').value
+        self.qc4 = self.get_parameter('qc4').value
+        self.rc1 = self.get_parameter('rc1').value
+        self.data_out_location = self.get_parameter('data_out_location').value
+        self.data_out_name = self.get_parameter('data_out_name').value
+        
+        self.delta_normalization = max(abs(self.max_right_steering), abs(self.max_left_steering))
+        self.data_out = self.data_out_location+self.data_out_name+".csv"
 
         # Sensor measurements
         self.v_min = 0.1
@@ -133,39 +186,8 @@ class LqgController(Node):
         self.e_x = 0  # longitduinal error
         self.e_theta_m1 = 0  # previous heading error
         self.e_theta = 0  # heading error
-
-        # Declare ROS parameters
-        self.declare_parameters(
-            namespace='',
-            parameters=[
-                ('zero_speed', 0.0),
-                ('max_speed', 5),
-                ('min_speed', 0.1),
-                ('error_threshold', 0.15),
-                ('max_right_steering', 0.4),
-                ('max_left_steering', -0.4),
-                ('Ts', 0.05 ),
-                ('lateral_error_threshold', 0.0 ),
-                ('heading_error_threshold', 0.0 ),
-                ('data_out_location', self.data_out_location_default),
-                ('data_out_name', self.data_out_name_default )
-            ])
-        self.zero_speed = self.get_parameter('zero_speed').value  # should be around 0
-        self.max_speed = self.get_parameter('max_speed').value  # between [0,5] m/s
-        self.min_speed = self.get_parameter('min_speed').value  # between [0,5] m/s 
-        self.error_threshold = self.get_parameter('error_threshold').value  # between [0,1]
-        self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
-        self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
-        self.Ts = self.get_parameter('Ts').value
-        self.data_out_location = self.get_parameter('data_out_location').value
-        self.data_out_name = self.get_parameter('data_out_name').value
-        self.lateral_error_threshold = self.get_parameter('lateral_error_threshold').value
-        self.heading_error_threshold = self.get_parameter('heading_error_threshold').value
         
-        self.delta_normalization = max(abs(self.max_right_steering), abs(self.max_left_steering))
-
-        self.data_out = self.data_out_location+self.data_out_name+".csv"
-
+        # Log values used in model
         self.get_logger().info(
             f'\n zero_speed: {self.zero_speed}'
             f'\n max_speed: {self.max_speed}'
@@ -174,6 +196,19 @@ class LqgController(Node):
             f'\n max_right_steering: {self.max_right_steering}'
             f'\n max_left_steering: {self.max_left_steering}'
             f'\n controller sample time: {self.Ts}'
+            f'\n lateral_error_threshold: {self.lateral_error_threshold}'
+            f'\n heading_error_threshold: {self.heading_error_threshold}'
+            f'\n qf1: {self.qf1}'
+            f'\n qf2: {self.qf2}'
+            f'\n qf3: {self.qf3}'
+            f'\n qf4: {self.qf4}'
+            f'\n rf1: {self.rf1}'
+            f'\n rf3: {self.rf3}'
+            f'\n qc1: {self.qc1}'
+            f'\n qc2: {self.qc2}'
+            f'\n qc3: {self.qc3}'
+            f'\n qc4: {self.qc4}'
+            f'\n rc1: {self.rc1}'
             f'\n data_out file: {self.data_out}'
         )
 
