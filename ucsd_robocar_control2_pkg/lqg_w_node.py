@@ -393,7 +393,7 @@ def main(args=None):
         time.sleep(1)
         lqg_publisher.save_csv()
         lqg_publisher.get_logger().info(f'Saving data to: {lqg_publisher.data_out}.')
-        executor.shutdown()
+        rclpy.shutdown()
         lqg_publisher.destroy_node()
         lqg_publisher.get_logger().info(f'{NODE_NAME} shut down successfully.')
 
