@@ -258,7 +258,7 @@ class LqgController(Node):
         self.e_y = self.e_y_buffer
         self.e_x = self.e_x_buffer
         self.e_theta_m1 = self.e_theta
-        self.e_theta = self.e_theta
+        self.e_theta = self.e_theta_buffer
 
         # manual control
         self.joy_speed = self.joy_speed_buffer 
