@@ -391,6 +391,9 @@ def main(args=None):
             lqg_publisher.get_logger().info(f'Saved data to: {lqg_publisher.data_out}.')
             executor.shutdown()
             lqg_publisher.destroy_node()
+    except KeyboardInterrupt:
+        executor.shutdown()
+        lqg_publisher.destroy_node()
     finally:
         rclpy.shutdown()
 

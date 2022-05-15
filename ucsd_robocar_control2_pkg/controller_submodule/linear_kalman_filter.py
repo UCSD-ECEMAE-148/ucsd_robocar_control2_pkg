@@ -118,18 +118,6 @@ class LinearKalmanFilter:
         return self.xhat, self.Pp
     
     def lkf_step(self, sys, x0, u, y, P0, Qo, Ro):
-        #         Pp_1 = A * Pp * A'
-        #         Pp_2 = (A * Pp * C') / (C * Pp * C' + Ro) * C * Pp * A'
-        #         Pp_3 = Qo
-        
-        #         Pp = Pp_1 - Pp_2 + Pp_3
-        
-        #         Pp = [A * Pp * A'] 
-        #              -
-        #              [(A * Pp * C') 
-        #              * (C * Pp * C' + Ro)^-1 
-        #              * C * Pp * A'
-        #              + Qo];
         self.sysd = sys
         [A, B, C, D] = ssdata(self.sysd)
         A = np.array(A)
@@ -166,7 +154,31 @@ class LinearKalmanFilter:
                     np.add(\
                         np.linalg.multi_dot([A, self.Pp, C_t, np.linalg.inv(np.add(np.linalg.multi_dot([C, self.Pp, C_t]), Ro)), C, self.Pp, A_t]), \
                         Qo))
-
+            
+            # Kalman predictor gain
+            # K = np.dot(np.dot(np.dot(A, self.Pp), C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))) 
+            # Predicted error covariance
+            # self.Pp = \
+            #     np.subtract(\
+            #         np.dot(A, np.dot(self.Pp, A_t), \
+            #         np.add(\
+            #             np.dot(np.dot(np.dot(A, np.dot(self.Pp, C_t)), np.linalg.inv(np.add(np.dot(C, np.dot(self.Pp, C_t))), Ro), np.dot(C, np.dot(self.Pp, A_t)))),
+            #             Qo)
+            #         Pp = A * Pp * A' - (A * Pp * C') / (C * Pp * C' + Ro) * C * Pp * A' + Qo;
+            
+            #         Pp_1 = A * Pp * A'
+            #         Pp_2 = (A * Pp * C') / (C * Pp * C' + Ro) * C * Pp * A'
+            #         Pp_3 = Qo
+            
+            #         Pp = Pp_1 - Pp_2 + Pp_3
+            
+            #         Pp = [A * Pp * A'] 
+            #              -
+            #              [(A * Pp * C') 
+            #              * (C * Pp * C' + Ro)^-1 
+            #              * C * Pp * A'
+            #              + Qo];
+            
             # filtered output prediction
             self.yhat = np.dot(C, self.xhat)
         except:
@@ -239,3 +251,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
