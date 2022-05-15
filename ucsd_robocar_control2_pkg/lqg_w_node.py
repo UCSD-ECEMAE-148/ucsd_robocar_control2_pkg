@@ -22,12 +22,13 @@ import time
 
 NODE_NAME = 'lqg_w_node'
 ACTUATOR_TOPIC_NAME = '/teleop'
-ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
-JOY_TOPIC_NAME = '/teleop'
+# JOY_TOPIC_NAME = '/teleop'
+JOY_TOPIC_NAME = '/joyteleop'
 
 
 class LqgController(Node):
@@ -351,7 +352,7 @@ class LqgController(Node):
         # normalized_delta = delta / self.delta_normalization
         # self.inf_throttle = self.min_speed - (self.min_speed - self.max_speed) / (1 - self.error_threshold)
         # speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
-        speed_raw = 0.3
+        speed_raw = 0.5
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
