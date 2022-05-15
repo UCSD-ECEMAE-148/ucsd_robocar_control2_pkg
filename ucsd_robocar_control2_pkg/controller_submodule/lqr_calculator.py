@@ -23,7 +23,7 @@ class LQRDesign:
         self.q2_coef = []
         self.q3_coef = []
         self.q4_coef = []
-        self.r1 = 1.0E-2
+        self.r1 = 1.0E-1
         self.compute_weight_functions()
         
     def compute_weight_functions(self):
