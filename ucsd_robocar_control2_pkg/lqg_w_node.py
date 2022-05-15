@@ -194,7 +194,7 @@ class LqgController(Node):
         elif yaw_magnitude >= ((3/2) * math.pi) and yaw_magnitude < (2 * math.pi):
             yaw_magnitude = yaw_magnitude - (3/2) * math.pi
         
-        self.yaw_imu_buffer = yaw_direction * yaw_magnitude
+        self.yaw_imu_buffer = yaw_direction * ((math.pi/2) - yaw_magnitude)
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
         self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
@@ -299,7 +299,7 @@ class LqgController(Node):
         K = self.update_gains()
 
         # Steering LQR
-        self.delta_raw = np.dot(K[0], self.state_est).flat[0]
+        self.delta_raw = -np.dot(K[0], self.state_est).flat[0]
         delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling
@@ -356,7 +356,7 @@ class LqgController(Node):
     def compare_manual_and_lqr(self):
         self.df = pd.concat([self.df, pd.DataFrame.from_records([{ \
             'time': float(round((time.time() - self.start_time),3)), \
-            'joy_delta': float(round(self.joy_steering,3)), \
+            'joy_delta': float(round(-self.joy_steering,3)), \
             'joy_speed': float(round(self.joy_speed,3)), \
             'lqg_delta': float(round(self.delta_raw,3)), \
             'lqg_speed': float(round(self.drive_cmd.drive.speed,3)), \
