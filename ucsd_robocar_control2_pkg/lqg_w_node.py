@@ -173,9 +173,9 @@ class LqgController(Node):
         self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
         self.ss_simulation = StateSpaceSimulation()
-        self.P = np.diag([0, 0, 0, 0])
+        self.P = np.diag([1.0E-3, 0, 1.0E-3, 0])
         self.Qo = np.diag([5.0E-3, 1.0E-2, 1.0E-6, 1.0E-6])
-        self.Ro = np.diag([1.0E-3, 5.0E-1])
+        self.Ro = np.diag([1.0E-3, 5.0E-2])
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.state_est = self.x0

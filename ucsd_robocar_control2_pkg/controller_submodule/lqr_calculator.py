@@ -17,13 +17,13 @@ class LQRDesign:
         self.Vx_range = [0.1, 0.5, 5.0]
         self.q1_range = [0.1, 0.3, 1.0]
         self.q2_range = [0.1, 0.3, 1.0]
-        self.q3_range = [1.5, 5.0, 15.0]
-        self.q4_range = [2.5, 7.5, 25.0]
+        self.q3_range = [10, 30.0, 100.0]
+        self.q4_range = [1.0, 3.0, 10.0]
         self.q1_coef = []
         self.q2_coef = []
         self.q3_coef = []
         self.q4_coef = []
-        self.r1 = 5.0E-3
+        self.r1 = 1.0E-2
         self.compute_weight_functions()
         
     def compute_weight_functions(self):
