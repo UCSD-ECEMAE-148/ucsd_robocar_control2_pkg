@@ -375,27 +375,24 @@ def main(args=None):
     rclpy.init(args=args)
     lqg_publisher = LqgController()
     try:
-        executor = MultiThreadedExecutor(num_threads=4)
+        executor = MultiThreadedExecutor(num_threads=5)
         executor.add_node(lqg_publisher)
         try:
             executor.spin()
         finally:
-            executor.shutdown()
+            lqg_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
+            lqg_publisher.drive_cmd.header.stamp = lqg_publisher.current_time
+            lqg_publisher.drive_cmd.header.frame_id = lqg_publisher.frame_id
+            lqg_publisher.drive_cmd.drive.speed = 0.0
+            lqg_publisher.drive_cmd.drive.steering_angle = 0.0
+            lqg_publisher.drive_pub.publish(lqg_publisher.drive_cmd)
+            time.sleep(1)
             lqg_publisher.save_csv()
+            lqg_publisher.get_logger().info(f'Saved data to: {lqg_publisher.data_out}.')
+            executor.shutdown()
             lqg_publisher.destroy_node()
-    except KeyboardInterrupt:
-        lqg_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
-        lqg_publisher.drive_cmd.header.stamp = lqg_publisher.current_time
-        lqg_publisher.drive_cmd.header.frame_id = lqg_publisher.frame_id
-        lqg_publisher.drive_cmd.drive.speed = 0.0
-        lqg_publisher.drive_cmd.drive.steering_angle = 0.0
-        lqg_publisher.drive_pub.publish(lqg_publisher.drive_cmd)
-        time.sleep(1)
-        lqg_publisher.save_csv()
-        lqg_publisher.get_logger().info(f'Saving data to: {lqg_publisher.data_out}.')
+    finally:
         rclpy.shutdown()
-        lqg_publisher.destroy_node()
-        lqg_publisher.get_logger().info(f'{NODE_NAME} shut down successfully.')
 
 
 if __name__ == '__main__':
