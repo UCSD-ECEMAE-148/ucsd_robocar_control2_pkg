@@ -299,7 +299,7 @@ class LqgController(Node):
         K = self.update_gains()
 
         # Steering LQR
-        self.delta_raw = -np.dot(K[0], self.state_est).flat[0]
+        self.delta_raw = np.dot(K[0], self.state_est).flat[0]
         delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling
