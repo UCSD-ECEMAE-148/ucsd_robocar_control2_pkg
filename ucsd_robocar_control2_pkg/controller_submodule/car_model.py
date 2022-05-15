@@ -19,8 +19,8 @@ class CarModel:
         self.mf = self.m * (1 - self.Lf / self.L)  # FIXME mass on front axel
         self.mr = self.m * (1 - self.Lr / self.L)  # FIXME mass on rear axel
         self.Iz = (self.Lf**2 * self.mf) + (self.Lr**2 * self.mr) # moment of inertia
-        self.cf = 0.4  # FIXME front tire cornering stiffness
-        self.cr = 2.65  # FIXME rear tire cornering stiffness
+        self.cf = 0.65  # FIXME front tire cornering stiffness
+        self.cr = 3.0  # FIXME rear tire cornering stiffness
         self.sysd = 0
         self.car_parameter_input_path = car_parameter_input_path
         if self.car_parameter_input_path is not None:
