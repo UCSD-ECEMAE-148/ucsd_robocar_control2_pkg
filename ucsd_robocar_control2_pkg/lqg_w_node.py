@@ -104,6 +104,7 @@ class LqgController(Node):
         # Sensor measurements Buffer
         # IMU
         self.yaw_imu_buffer = 0
+        self.yaw_imu_initial = None
         self.yaw_rate_imu_buffer = 0
 
         # VESC
@@ -185,16 +186,20 @@ class LqgController(Node):
         euler = euler_from_quaternion(quaternion)
         
         self.yaw_imu_buffer = euler[2]
-        yaw_direction = np.sign(self.yaw_imu_buffer)
-        yaw_magnitude = np.abs(self.yaw_imu_buffer)
-        if yaw_magnitude >= (math.pi/2) and yaw_magnitude < math.pi:
-            yaw_magnitude = yaw_magnitude - math.pi/2
-        elif yaw_magnitude >= math.pi and yaw_magnitude < ((3/2) * math.pi):
-            yaw_magnitude = yaw_magnitude - math.pi
-        elif yaw_magnitude >= ((3/2) * math.pi) and yaw_magnitude < (2 * math.pi):
-            yaw_magnitude = yaw_magnitude - (3/2) * math.pi
+        if self.yaw_imu_initial is None:
+            self.yaw_imu_initial = self.yaw_imu_buffer
         
-        self.yaw_imu_buffer = yaw_direction * ((math.pi/2) - yaw_magnitude)
+        # yaw_direction = np.sign(self.yaw_imu_buffer)
+        # yaw_magnitude = np.abs(self.yaw_imu_buffer)
+        # if yaw_magnitude >= (math.pi/2) and yaw_magnitude < math.pi:
+        #     yaw_magnitude = yaw_magnitude - math.pi/2
+        # elif yaw_magnitude >= math.pi and yaw_magnitude < ((3/2) * math.pi):
+        #     yaw_magnitude = yaw_magnitude - math.pi
+        # elif yaw_magnitude >= ((3/2) * math.pi) and yaw_magnitude < (2 * math.pi):
+        #     yaw_magnitude = yaw_magnitude - (3/2) * math.pi
+        # self.yaw_imu_buffer = yaw_direction * ((math.pi/2) - yaw_magnitude)
+
+        self.yaw_imu_buffer = self.yaw_imu_buffer - self.yaw_imu_initial
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
         self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
@@ -245,10 +250,15 @@ class LqgController(Node):
         self.vy = self.vy_vesc_buffer
 
         # error data from lidar
-        self.e_y = np.sign(self.e_y_buffer) * max(self.lateral_error_threshold, self.e_y_buffer)
+        # self.e_y = np.sign(self.e_y_buffer) * max(self.lateral_error_threshold, abs(self.e_y_buffer))
+        # self.e_x = self.e_x_buffer
+        # self.e_theta_m1 = self.e_theta
+        # self.e_theta = np.sign(self.e_theta) * max(self.heading_error_threshold, self.e_theta)
+        
+        self.e_y = self.e_y_buffer
         self.e_x = self.e_x_buffer
         self.e_theta_m1 = self.e_theta
-        self.e_theta = np.sign(self.e_theta) * max(self.heading_error_threshold, self.e_theta)
+        self.e_theta = self.e_theta
 
         # manual control
         self.joy_speed = self.joy_speed_buffer 
