@@ -35,7 +35,7 @@ class LinearKalmanFilter:
         P0 = np.array(P0)
         Qo = np.array(Qo)
         Ro = np.array(Ro)
-        print(f"Q_LKF: {Qo}")
+        # print(f"Q_LKF: {Qo}")
 
         a_num_rows, a_num_cols = A.shape
         d_num_rows, d_num_cols = D.shape

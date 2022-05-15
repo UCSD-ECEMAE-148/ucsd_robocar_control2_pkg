@@ -16,9 +16,9 @@ class LQRDesign:
         self.R = np.identity(1, dtype=float)
         self.Vx_range = [0.1, 0.5, 5.0]
         self.q1_range = [0.1, 0.3, 1.0]
-        self.q2_range = [0.1, 0.03, 0.01]
-        self.q3_range = [0.5, 1.5, 5.0]
-        self.q4_range = [0.1, 0.03, 0.01]
+        self.q2_range = [0.1, 0.3, 1.0]
+        self.q3_range = [1.5, 5.0, 15.0]
+        self.q4_range = [1.5, 5.0, 15.0]
         self.q1_coef = []
         self.q2_coef = []
         self.q3_coef = []
