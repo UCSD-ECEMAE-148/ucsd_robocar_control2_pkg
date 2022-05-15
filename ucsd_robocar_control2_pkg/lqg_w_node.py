@@ -199,7 +199,7 @@ class LqgController(Node):
         #     yaw_magnitude = yaw_magnitude - (3/2) * math.pi
         # self.yaw_imu_buffer = yaw_direction * ((math.pi/2) - yaw_magnitude)
 
-        self.yaw_imu_buffer = self.yaw_imu_buffer - self.yaw_imu_initial
+        self.yaw_imu_buffer = abs(self.yaw_imu_buffer - self.yaw_imu_initial)
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
         self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
