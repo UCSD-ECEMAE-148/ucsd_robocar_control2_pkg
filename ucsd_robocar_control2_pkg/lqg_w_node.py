@@ -22,12 +22,12 @@ import time
 
 NODE_NAME = 'lqg_w_node'
 ACTUATOR_TOPIC_NAME = '/teleop'
-# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
-JOY_TOPIC_NAME = '/myteleop'
+JOY_TOPIC_NAME = '/teleop'
 
 
 class LqgController(Node):
@@ -161,7 +161,7 @@ class LqgController(Node):
         self.lateral_error_threshold = self.get_parameter('lateral_error_threshold').value
         self.heading_error_threshold = self.get_parameter('heading_error_threshold').value
         
-        self.delta_normalization = max(abs(self.max_right_steering),abs(self.max_left_steering))
+        self.delta_normalization = max(abs(self.max_right_steering), abs(self.max_left_steering))
 
         self.data_out = self.data_out_location+self.data_out_name+".csv"
 
@@ -185,14 +185,18 @@ class LqgController(Node):
         euler = euler_from_quaternion(quaternion)
         
         self.yaw_imu_buffer = euler[2]
-        if self.yaw_imu_buffer >= (math.pi/2) and self.yaw_imu_buffer < math.pi:
-            self.yaw_imu_buffer = self.yaw_imu_buffer - math.pi/2
-        elif self.yaw_imu_buffer >= math.pi and self.yaw_imu_buffer < ((3/2) * math.pi):
-            self.yaw_imu_buffer = self.yaw_imu_buffer - math.pi
-        elif self.yaw_imu_buffer >= ((3/2) * math.pi) and self.yaw_imu_buffer < (2 * math.pi):
-            self.yaw_imu_buffer = self.yaw_imu_buffer - (3/2) * math.pi
+        yaw_direction = np.sign(self.yaw_imu_buffer)
+        yaw_magnitude = np.abs(self.yaw_imu_buffer)
+        if yaw_magnitude >= (math.pi/2) and yaw_magnitude < math.pi:
+            yaw_magnitude = yaw_magnitude - math.pi/2
+        elif yaw_magnitude >= math.pi and yaw_magnitude < ((3/2) * math.pi):
+            yaw_magnitude = yaw_magnitude - math.pi
+        elif yaw_magnitude >= ((3/2) * math.pi) and yaw_magnitude < (2 * math.pi):
+            yaw_magnitude = yaw_magnitude - (3/2) * math.pi
+        
+        self.yaw_imu_buffer = yaw_direction * yaw_magnitude
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
-        # self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
+        self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
     def odom_measurement(self, odom_data):
         # car position
@@ -241,10 +245,10 @@ class LqgController(Node):
         self.vy = self.vy_vesc_buffer
 
         # error data from lidar
-        self.e_y = max(self.lateral_error_threshold, self.e_y_buffer)
+        self.e_y = np.sign(self.e_y_buffer) * max(self.lateral_error_threshold, self.e_y_buffer)
         self.e_x = self.e_x_buffer
-        self.e_theta_m1 = max(self.heading_error_threshold, self.e_theta)
-        self.e_theta = self.e_theta_buffer
+        self.e_theta_m1 = self.e_theta
+        self.e_theta = np.sign(self.e_theta) * max(self.heading_error_threshold, self.e_theta)
 
         # manual control
         self.joy_speed = self.joy_speed_buffer 
@@ -306,10 +310,10 @@ class LqgController(Node):
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
-        self.y_sim = self.car_model.calc_output(self.state_measurement)
+        self.y_measure = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_sim, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_measure, self.P, self.Qo, self.Ro)
         
         if self.debug:
             self.get_logger().info(
