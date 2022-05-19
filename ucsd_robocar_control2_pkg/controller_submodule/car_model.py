@@ -22,7 +22,8 @@ class CarModel:
         self.cf = 0.65  # FIXME front tire cornering stiffness
         self.cr = 3.0  # FIXME rear tire cornering stiffness
         self.sysd = 0
-        self.Kv = (self.m / (self.Lr + self.Lf)) * (self.Lr / self.cf) - (self.Lf / self.cf)  # understeer gradient
+        self.Kv = (self.mf / self.cf) - (self.mr / self.cr)  # understeer gradient
+        # self.Kv = (self.m / (self.Lr + self.Lf)) * (self.Lr / self.cf) - (self.Lf / self.cf)  # understeer gradient
         self.car_parameter_input_path = car_parameter_input_path
         if self.car_parameter_input_path is not None:
             self.car_parameter_input_dictionary = {}

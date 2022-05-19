@@ -34,7 +34,8 @@ JOY_TOPIC_NAME = '/joyteleop'
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.debug = True
+        self.debug = False
+        self.debug_measurements = False
         self.frame_id = 'base_link'
         self.QUEUE_SIZE = 10
         self.data_out_location_default = "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/"
@@ -50,6 +51,7 @@ class LqgController(Node):
             'lqg_e_cg_dot',\
             'lqg_theta_e',\
             'lqg_theta_e_dot',\
+            'future_curvature',\
             'lqg_e_cg_hat', \
             'lqg_e_cg_dot_hat', \
             'lqg_theta_e_hat', \
@@ -220,7 +222,7 @@ class LqgController(Node):
 
         self.yaw_imu_buffer = abs(self.yaw_imu_buffer - self.yaw_imu_initial)
         self.yaw_rate_imu_buffer = imu_data.angular_velocity.z
-        if self.debug:
+        if self.debug_measurements:
             self.get_logger().info(f"Updating IMU: {(180 / math.pi) * self.yaw_imu_buffer}, {self.yaw_rate_imu_buffer}")
 
     def odom_measurement(self, odom_data):
@@ -245,7 +247,7 @@ class LqgController(Node):
         # car angular velocity
         self.yaw_rate_vesc_buffer = odom_data.twist.twist.angular.z
         
-        if self.debug:
+        if self.debug_measurements:
             self.get_logger().info(f"Updating odom: {self.vx_vesc_buffer}")
 
     def error_measurement(self, error_data):
@@ -258,6 +260,7 @@ class LqgController(Node):
         self.recieved_error_measurement = True
         
         if self.debug:
+        # if self.debug_measurements:
             self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer},{self.future_curvature_buffer}")
             
 
@@ -265,7 +268,7 @@ class LqgController(Node):
         self.joy_speed_buffer = joy_data.drive.speed
         self.joy_steering_buffer = joy_data.drive.steering_angle
         
-        if self.debug:
+        if self.debug_measurements:
             self.get_logger().info(f"Updating joy: {self.joy_speed_buffer}, {self.joy_steering_buffer}")
 
     def get_latest_measurements(self):
@@ -304,7 +307,7 @@ class LqgController(Node):
     def update_gains(self):
         K = self.lqr_calc.compute_single_gain_sample(self.vx, self.sys)
         
-        if self.debug:
+        if self.debug_measurements:
             self.get_logger().info(f"Updating gains: {K}")
         return K
 
@@ -333,15 +336,9 @@ class LqgController(Node):
         -speed (m/s)
         """
         
-        
-        if self.debug:
-            self.get_logger().info(f"Here 1")
         # Update Car model LTV system --- A(Vx)
         self.sys = self.car_model.build_error_model(self.vx, 2)
 
-        
-        if self.debug:
-            self.get_logger().info(f"Here 2")
         # get updated gains
         K = self.update_gains()
         
@@ -356,8 +353,6 @@ class LqgController(Node):
         d_ff_3 = K.flat[2] * (-self.Lr * self.future_curvature + (self.mr/self.cr) * ay)
         self.d_ff = d_ff_1 + d_ff_2 + d_ff_3
         
-        if self.debug:
-            self.get_logger().info(f"Here 4")
         self.delta_raw = -np.dot(K[0], self.state_est).flat[0] + self.d_ff
         delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
@@ -375,10 +370,10 @@ class LqgController(Node):
         self.y_measure = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        # if self.recieved_error_measurement:
-        #     Ro = self.Ro
-        # else:
-        #     Ro = self.Ro_inf
+        if self.recieved_error_measurement:
+            Ro = self.Ro
+        else:
+            Ro = self.Ro_inf
         self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_measure, self.P, self.Qo, self.Ro)
         
         if self.debug:
@@ -395,6 +390,9 @@ class LqgController(Node):
                 f'\n joy_steering: {self.joy_steering}'
                 f'\n y: {self.y_measure}'
                 f'\n state_est: {self.state_est}'
+                f'\n d_ff_1: {d_ff_1}'
+                f'\n d_ff_2: {d_ff_2}'
+                f'\n d_ff_3: {d_ff_3}'
             )
 
         # Publish values
@@ -414,7 +412,7 @@ class LqgController(Node):
             self.drive_pub.publish(self.drive_cmd)
             
         # Get new sensor measurements
-        # self.recieved_error_measurement = False
+        self.recieved_error_measurement = False
         self.get_latest_measurements()
 
         # write out
@@ -432,6 +430,7 @@ class LqgController(Node):
             'lqg_e_cg_dot': float(round(self.state_measurement[1][0],3)), \
             'lqg_theta_e': float(round(self.state_measurement[2][0],3)), \
             'lqg_theta_e_dot': float(round(self.state_measurement[3][0],3)), \
+            'future_curvature': float(round(self.future_curvature,3)), \
             'lqg_e_cg_hat': float(round(self.state_est[0][0],3)), \
             'lqg_e_cg_dot_hat': float(round(self.state_est[1][0],3)), \
             'lqg_theta_e_hat': float(round(self.state_est[2][0],3)), \
