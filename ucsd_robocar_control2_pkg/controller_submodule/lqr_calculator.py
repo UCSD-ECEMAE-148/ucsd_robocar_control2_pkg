@@ -2,8 +2,8 @@ from control.matlab import *  # MATLAB-like functions
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
-from .car_model import CarModel
-# from car_model import CarModel
+# from .car_model import CarModel
+from car_model import CarModel
 
 
 class LQRDesign:
@@ -116,6 +116,9 @@ def lqr_example():
           f"\nK_mat[3]: {K_mat.flat[3]}"
           f"\nK_s: {K_s}"
           f"\nK_s.flat[0]: {K_s[0]}"
+          f"\nK_s.flat[1]: {K_s[1]}"
+          f"\nK_s.flat[2]: {K_s[2]}"
+          f"\nK_s.flat[3]: {K_s[3]}"
           f"\nKs dot x: {np.dot(K_s, x_hat.flat)}"
           # f"\nKs dot x flat: {-np.dot(K_s[0], x_hat).flat[0]}"
         #   f"\nK_mat: {K_mat}"

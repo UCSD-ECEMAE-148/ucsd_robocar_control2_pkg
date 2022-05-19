@@ -103,17 +103,6 @@ class LqgController(Node):
                 ('Ts', 0.05 ),
                 ('lateral_error_threshold', 0.0 ),
                 ('heading_error_threshold', 0.0 ),
-                ('qf1', 1.0),
-                ('qf2', 1.0),
-                ('qf3', 1.0),
-                ('qf4', 1.0),
-                ('rf1', 1.0),
-                ('rf3', 1.0),
-                ('qc1', 1.0),
-                ('qc2', 1.0),
-                ('qc3', 1.0),
-                ('qc4', 1.0),
-                ('rc1', 1.0),
                 ('data_out_location', self.data_out_location_default),
                 ('data_out_name', self.data_out_name_default )
             ])
@@ -126,17 +115,6 @@ class LqgController(Node):
         self.Ts = self.get_parameter('Ts').value
         self.lateral_error_threshold = self.get_parameter('lateral_error_threshold').value
         self.heading_error_threshold = self.get_parameter('heading_error_threshold').value
-        self.qf1 = self.get_parameter('qf1').value
-        self.qf2 = self.get_parameter('qf2').value
-        self.qf3 = self.get_parameter('qf3').value
-        self.qf4 = self.get_parameter('qf4').value
-        self.rf1 = self.get_parameter('rf1').value
-        self.rf3 = self.get_parameter('rf3').value
-        self.qc1 = self.get_parameter('qc1').value
-        self.qc2 = self.get_parameter('qc2').value
-        self.qc3 = self.get_parameter('qc3').value
-        self.qc4 = self.get_parameter('qc4').value
-        self.rc1 = self.get_parameter('rc1').value
         self.data_out_location = self.get_parameter('data_out_location').value
         self.data_out_name = self.get_parameter('data_out_name').value
         
@@ -154,6 +132,7 @@ class LqgController(Node):
         self.e_y_buffer = 0
         self.e_x_buffer = 0
         self.e_theta_buffer = 0
+        self.future_curvature_buffer = 0
 
         # Sensor measurements Buffer
         # IMU
@@ -171,6 +150,12 @@ class LqgController(Node):
 
         # Controller and State Estimate modules
         self.car_model = CarModel()
+        self.Kv = self.car_model.Kv
+        self.L = self.car_model.L
+        self.Lr = self.car_model.Lr
+        self.Lf = self.car_model.Lf
+        self.cf = self.car_model.cf
+        self.cr = self.car_model.cr
         self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
         self.ss_simulation = StateSpaceSimulation()
@@ -187,6 +172,7 @@ class LqgController(Node):
         self.e_x = 0  # longitduinal error
         self.e_theta_m1 = 0  # previous heading error
         self.e_theta = 0  # heading error
+        self.future_curvature = 0  # future track curvature (1 / R)
         
         # Log values used in model
         self.get_logger().info(
@@ -199,17 +185,6 @@ class LqgController(Node):
             f'\n controller sample time: {self.Ts}'
             f'\n lateral_error_threshold: {self.lateral_error_threshold}'
             f'\n heading_error_threshold: {self.heading_error_threshold}'
-            f'\n qf1: {self.qf1}'
-            f'\n qf2: {self.qf2}'
-            f'\n qf3: {self.qf3}'
-            f'\n qf4: {self.qf4}'
-            f'\n rf1: {self.rf1}'
-            f'\n rf3: {self.rf3}'
-            f'\n qc1: {self.qc1}'
-            f'\n qc2: {self.qc2}'
-            f'\n qc3: {self.qc3}'
-            f'\n qc4: {self.qc4}'
-            f'\n rc1: {self.rc1}'
             f'\n data_out file: {self.data_out}'
         )
 
@@ -267,6 +242,7 @@ class LqgController(Node):
             self.e_y_buffer = error_data.data[0]
             self.e_x_buffer = error_data.data[1]
             self.e_theta_buffer = error_data.data[2]
+            self.future_curvature_buffer = error_data.data[3]
 
     def set_joy_command(self, joy_data):
         self.joy_speed_buffer = joy_data.drive.speed
@@ -284,17 +260,13 @@ class LqgController(Node):
         # car linear speed
         self.vx = max(self.v_min, self.vx_vesc_buffer)
         self.vy = self.vy_vesc_buffer
-
-        # error data from lidar
-        # self.e_y = np.sign(self.e_y_buffer) * max(self.lateral_error_threshold, abs(self.e_y_buffer))
-        # self.e_x = self.e_x_buffer
-        # self.e_theta_m1 = self.e_theta
-        # self.e_theta = np.sign(self.e_theta) * max(self.heading_error_threshold, self.e_theta)
         
+        # error measurements
         self.e_y = self.e_y_buffer
         self.e_x = self.e_x_buffer
         self.e_theta_m1 = self.e_theta
         self.e_theta = self.e_theta_buffer
+        self.future_curvature = self.future_curvature_buffer
 
         # manual control
         self.joy_speed = self.joy_speed_buffer 
@@ -345,7 +317,12 @@ class LqgController(Node):
         K = self.update_gains()
 
         # Steering LQR
-        self.delta_raw = -np.dot(K[0], self.state_est).flat[0]
+        ay = np.power(self.vx,2) * self.future_curvature
+        d_ff_1 = self.L * self.future_curvature
+        d_ff_2 = self.car_model.Kv * ay
+        d_ff_3 = K_s[2] * (-self.Lr * self.future_curvature + (self.mr/self.cr) * ay)
+        d_ff = d_ff_1 + d_ff_2 + d_ff_3
+        self.delta_raw = -np.dot(K[0], self.state_est).flat[0] + d_ff
         delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
         # Throttle gain scheduling

@@ -8,16 +8,5 @@ lqg_w_node:
     Ts : 0.05
     lateral_error_threshold : 0.02 
     heading_error_threshold : 0.02
-    qf1 : 1.0
-    qf2 : 1.0
-    qf3 : 1.0
-    qf4 : 1.0
-    rf1 : 1.0
-    rf3 : 1.0
-    qc1 : 1.0
-    qc2 : 1.0
-    qc3 : 1.0
-    qc4 : 1.0
-    rc1 : 1.0
     data_out_name : "physical_lqg_test"
     data_out_location : "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/"
