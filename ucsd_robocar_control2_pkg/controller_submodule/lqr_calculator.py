@@ -2,8 +2,8 @@ from control.matlab import *  # MATLAB-like functions
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
-# from .car_model import CarModel
-from car_model import CarModel
+from .car_model import CarModel
+# from car_model import CarModel
 
 
 class LQRDesign:
