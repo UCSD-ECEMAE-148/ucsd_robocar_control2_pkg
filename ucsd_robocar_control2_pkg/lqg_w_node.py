@@ -178,6 +178,8 @@ class LqgController(Node):
         self.e_theta_m1 = 0  # previous heading error
         self.e_theta = 0  # heading error
         self.future_curvature = 0  # future track curvature (1 / R)
+        self.d_ff = 0
+        self.delta_raw = 0
         
         # Log values used in model
         self.get_logger().info(
@@ -351,11 +353,11 @@ class LqgController(Node):
         d_ff_1 = self.L * self.future_curvature
         d_ff_2 = self.car_model.Kv * ay
         d_ff_3 = K.flat[2] * (-self.Lr * self.future_curvature + (self.mr/self.cr) * ay)
-        d_ff = d_ff_1 + d_ff_2 + d_ff_3
+        self.d_ff = d_ff_1 + d_ff_2 + d_ff_3
         
         if self.debug:
             self.get_logger().info(f"Here 4")
-        self.delta_raw = -np.dot(K[0], self.state_est).flat[0] + d_ff
+        self.delta_raw = -np.dot(K[0], self.state_est).flat[0] + self.d_ff
         delta = self.clamp(self.delta_raw, self.max_right_steering, self.max_left_steering)
 
         
@@ -423,6 +425,7 @@ class LqgController(Node):
             'joy_delta': float(round(-self.joy_steering,3)), \
             'joy_speed': float(round(self.joy_speed,3)), \
             'lqg_delta': float(round(self.delta_raw,3)), \
+            'd_ff': float(round(self.d_ff,3)), \
             'lqg_speed': float(round(self.drive_cmd.drive.speed,3)), \
             'lqg_e_cg': float(round(self.state_measurement[0][0],3)), \
             'lqg_e_cg_dot': float(round(self.state_measurement[1][0],3)), \
