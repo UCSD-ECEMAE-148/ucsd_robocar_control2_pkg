@@ -99,7 +99,7 @@ class LinearKalmanFilter:
                 # Measurement update
                 self.xhat = np.add(\
                     (self.xhat).reshape(num_states, 1), \
-                    np.dot(K, np.subtract(y[:, k], np.dot(C, self.xhat))).reshape(num_states, 1)
+                    np.dot(K, np.subtract(y[:, k], np.dot(C, self.xhat))).reshape(num_states, 1))
                 self.Pp = np.subtract(self.Pp, np.dot(np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C), self.Pp))
 
                 # filtered output

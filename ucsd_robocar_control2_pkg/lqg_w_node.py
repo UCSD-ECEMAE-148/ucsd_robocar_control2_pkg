@@ -166,7 +166,7 @@ class LqgController(Node):
         self.P = np.diag([1.0E-3, 0, 1.0E-3, 0])
         self.Qo = np.diag([5.0E-3, 1.0E-2, 1.0E-6, 1.0E-6])
         self.Ro = np.diag([1.0E-3, 5.0E-2])
-        self.Ro_inf = np.diag([np.inf,np.inf])
+        self.Ro_inf = np.diag([np.inf, np.inf])
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.state_est = self.x0
@@ -372,11 +372,11 @@ class LqgController(Node):
         self.y_measure = self.car_model.calc_output(self.state_measurement)
 
         # Get optimal state estimates
-        if self.recieved_error_measurement:
-            Ro = self.Ro
-        else:
-            Ro = self.Ro_inf
-        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_measure, self.P, self.Qo, Ro)
+        # if self.recieved_error_measurement:
+        #     Ro = self.Ro
+        # else:
+        #     Ro = self.Ro_inf
+        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_measure, self.P, self.Qo, self.Ro)
         
         if self.debug:
             self.get_logger().info(
@@ -411,7 +411,7 @@ class LqgController(Node):
             self.drive_pub.publish(self.drive_cmd)
             
         # Get new sensor measurements
-        self.recieved_error_measurement = False
+        # self.recieved_error_measurement = False
         self.get_latest_measurements()
 
         # write out
