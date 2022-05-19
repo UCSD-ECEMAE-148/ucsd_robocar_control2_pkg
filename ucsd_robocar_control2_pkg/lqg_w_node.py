@@ -44,6 +44,7 @@ class LqgController(Node):
             'joy_delta', \
             'joy_speed', \
             'lqg_delta', \
+            'd_ff', \
             'lqg_speed',\
             'lqg_e_cg',\
             'lqg_e_cg_dot',\
