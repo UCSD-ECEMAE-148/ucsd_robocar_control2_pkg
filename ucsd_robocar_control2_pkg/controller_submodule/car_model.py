@@ -37,7 +37,7 @@ class CarModel:
                 value = self.car_parameter_input_dictionary[key]
                 setattr(self, key, value)
 
-    def build_error_model(self, Vx, measure_model=None):
+    def build_error_model(self, Vx, measure_model=None, input_model=None):
         """
         states:
         x1 - ecg: cross-trackk error from center of gravity (cg) --- = (pose_error_y * delta_x_path - pose_error_x * delta_y_path) / (delta_x_path^2 + delta_y_path^2)
@@ -73,12 +73,25 @@ class CarModel:
         )
 
         # Input matrix
-        B = np.matrix(
+        B1 = np.matrix(
             [[0],
-             [self.cf / self.m],
-             [0],
-             [self.Lf * self.cf / self.Iz]]
+            [self.cf / self.m],
+            [0],
+            [self.Lf * self.cf / self.Iz]]
         )
+
+        if input_model == 1:
+            # Input matrix (feed forward) (used in Kalman filter, not in LQR)
+            B_ff = np.matrix(
+                [[0],
+                [a24 - Vx],
+                [0],
+                [a44]]
+            )
+            B = np.concatenate([B1, B_ff],axis=1)
+        else:
+            # Input matrix
+            B = B1
 
         if measure_model is not None:
             # Output matrix
@@ -89,9 +102,9 @@ class CarModel:
                      ])
                 # Feed-Forward matrix
                 # measure on only 1 state
-                D = np.matrix(
-                    [[0]
-                     ])
+                # D = np.matrix(
+                #     [[0]
+                #      ])
             if measure_model > 1:
                 if measure_model == 2:
                     # measure ecg & theta_e states
@@ -108,10 +121,10 @@ class CarModel:
 
                 # Feed-Forward matrix
                 # measure on only 2 states
-                D = np.matrix(
-                    [[0],
-                     [0]
-                     ])
+                # D = np.matrix(
+                #     [[0],
+                #      [0]
+                #      ])
         else:
             # Output matrix
             # measure all states
@@ -124,12 +137,14 @@ class CarModel:
 
             # Feed-Forward matrix
             # measure on all states
-            D = np.matrix(
-                [[0],
-                 [0],
-                 [0],
-                 [0]
-                 ])
+            # D = np.matrix(
+            #     [[0],
+            #      [0],
+            #      [0],
+            #      [0]
+            #      ])
+        # Feed-Forward matrix
+        D = np.zeros([C.shape[0],B.shape[1]])
 
         sys = ss(A, B, C, D)
         self.sysd = c2d(sys, self.Ts, method='zoh')
@@ -299,14 +314,14 @@ def build_model_example():
     Vy = 0
     x0 = np.array([[0.1], [0.2], [0.3], [0.4]])
     my_car_model = CarModel()
-    my_sys = my_car_model.build_error_model(V_x)
+    my_sys = my_car_model.build_error_model(V_x,2,1)
     y = my_car_model.calc_output(x0)
     # my_sys = my_car_model.build_2d_bicycle_model(delta, psi, Vx, Vy)
     [A, B, C, D] = ssdata(my_sys)
     print(f"my_sys.A: {my_sys.A}" 
           f"\n my_sys.Ts: {my_sys.dt}"
           f"\n A: {A}"
-          f"\n A: {np.linalg.matrix_rank(A)}"
+          f"\n rank(A): {np.linalg.matrix_rank(A)}"
           f"\n B: {B}"
           f"\n C: {C}"
           f"\n D: {D}"

@@ -198,7 +198,7 @@ class LqrController(Node):
     def set_path(self, path_data):
         # path coordinates (GLOBAL)
         self.x_path = np.array([pose.pose.position.x for pose in path_data.poses])
-        self.y_path = np.array([pose.pose.position.x for pose in path_data.poses])
+        self.y_path = np.array([pose.pose.position.y for pose in path_data.poses])
         self.get_logger().info(f"first val PATH (x): ({self.x_path[0]})")
 
     def set_joy_command(self, joy_data):
