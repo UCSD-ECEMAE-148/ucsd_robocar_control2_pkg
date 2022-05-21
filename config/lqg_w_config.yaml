@@ -8,5 +8,5 @@ lqg_w_node:
     Ts : 0.05
     lateral_error_threshold : 0.02 
     heading_error_threshold : 0.02
-    data_out_name : "test_11_05_20"
+    data_out_name : "test_12_05_20"
     data_out_location : "/home/projects/ros2_ws/src/ucsd_robocar_hub2/ucsd_robocar_control2_pkg/data/"
