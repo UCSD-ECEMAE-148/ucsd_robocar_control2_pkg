@@ -36,7 +36,7 @@ PATH_TOPIC_NAME = '/path_curvature'
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.debug = True
+        self.debug = False
         self.debug_measurements = False
         self.frame_id = 'base_link'
         self.QUEUE_SIZE = 10
