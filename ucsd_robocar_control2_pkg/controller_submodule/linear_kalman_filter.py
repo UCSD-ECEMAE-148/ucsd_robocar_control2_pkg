@@ -1,8 +1,8 @@
 from control import *
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
-# from .car_model import CarModel
-from car_model import CarModel
+from .car_model import CarModel
+# from car_model import CarModel
 
 
 class LinearKalmanFilter:

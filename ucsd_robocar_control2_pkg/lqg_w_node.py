@@ -19,16 +19,18 @@ import numpy as np
 import pandas as pd
 import math
 import time
+import copy
 
 NODE_NAME = 'lqg_w_node'
-ACTUATOR_TOPIC_NAME = '/teleop'
-# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+# ACTUATOR_TOPIC_NAME = '/teleop'
+ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
-# JOY_TOPIC_NAME = '/teleop'
-JOY_TOPIC_NAME = '/joyteleop'
+JOY_TOPIC_NAME = '/teleop'
+PATH_TOPIC_NAME = '/path_curvature'
+# JOY_TOPIC_NAME = '/joyteleop'
 
 
 class LqgController(Node):
@@ -85,6 +87,10 @@ class LqgController(Node):
         # Error subscriber
         self.error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE, callback_group=self.error_thread)
         self.error_subscriber
+
+        # Get path measurements
+        self.path_subscriber = self.create_subscription(Float32MultiArray, PATH_TOPIC_NAME, self.set_path, self.QUEUE_SIZE, callback_group=self.joy_thread)
+        self.path_subscriber
 
         # Get Joystick commands
         self.joy_subscriber = self.create_subscription(AckermannDriveStamped, JOY_TOPIC_NAME, self.set_joy_command, self.QUEUE_SIZE, callback_group=self.joy_thread)
@@ -173,7 +179,9 @@ class LqgController(Node):
         self.x0 = np.array([[0.0], [0.0], [0.0], [0.0]])
         self.state_measurement = self.x0
         self.state_est = self.x0
-        self.sys = self.car_model.build_error_model(self.vx)
+        self.sys = self.car_model.build_error_model(self.vx,2,1)
+        self.sys_gc = copy.deepcopy(self.sys)
+        self.sys_gc.B = self.sys.B[:,0]
 
         # Calculated states
         self.e_y = 0  # cross-track error
@@ -256,13 +264,16 @@ class LqgController(Node):
             self.e_y_buffer = error_data.data[0]
             self.e_x_buffer = error_data.data[1]
             self.e_theta_buffer = error_data.data[2]
-            self.future_curvature_buffer = error_data.data[3]
+            # self.future_curvature_buffer = error_data.data[3]
         self.recieved_error_measurement = True
         
         if self.debug:
         # if self.debug_measurements:
             self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer},{self.future_curvature_buffer}")
-            
+    
+    def set_path(self, path_data):
+        self.future_curvature_buffer = path_data.data[0]
+        self.vx_path_buffer = path_data.data[1]
 
     def set_joy_command(self, joy_data):
         self.joy_speed_buffer = joy_data.drive.speed
@@ -281,6 +292,7 @@ class LqgController(Node):
         self.yaw_rate = self.yaw_rate_imu_buffer
         
         # car linear speed
+        # self.vx = max(self.v_min, self.vx_path_buffer)
         self.vx = max(self.v_min, self.vx_vesc_buffer)
         self.vy = self.vy_vesc_buffer
         
@@ -305,7 +317,7 @@ class LqgController(Node):
         self.state_measurement[3][0] = (self.e_theta - self.e_theta_m1) / self.Ts
 
     def update_gains(self):
-        K = self.lqr_calc.compute_single_gain_sample(self.vx, self.sys)
+        K = self.lqr_calc.compute_single_gain_sample(self.vx, self.sys_gc)
         
         if self.debug_measurements:
             self.get_logger().info(f"Updating gains: {K}")
@@ -337,7 +349,9 @@ class LqgController(Node):
         """
         
         # Update Car model LTV system --- A(Vx)
-        self.sys = self.car_model.build_error_model(self.vx, 2)
+        self.sys = self.car_model.build_error_model(self.vx, 2, 1)
+        self.sys_gc = copy.deepcopy(self.sys)
+        self.sys_gc.B = self.sys.B[:,0]
 
         # get updated gains
         K = self.update_gains()
@@ -368,13 +382,15 @@ class LqgController(Node):
 
         # Get Current Measurement
         self.y_measure = self.car_model.calc_output(self.state_measurement)
+        
+        u = np.array([[delta], [self.vx * self.future_curvature]])
 
         # Get optimal state estimates
         if self.recieved_error_measurement:
             Ro = self.Ro
         else:
             Ro = self.Ro_inf
-        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, self.joy_steering, self.y_measure, self.P, self.Qo, self.Ro)
+        self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, u, self.y_measure, self.P, self.Qo, self.Ro)
         
         if self.debug:
             self.get_logger().info(

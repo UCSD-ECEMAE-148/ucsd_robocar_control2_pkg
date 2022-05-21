@@ -1,5 +1,6 @@
 from control.matlab import *  # MATLAB-like functions
 import numpy as np
+import copy
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from .car_model import CarModel
@@ -92,9 +93,13 @@ def lqr_example():
     V_min = 0.1
     Vx_vec = linspace(V_min, V_max, num_sims)
     my_car = CarModel()
-    my_sys = my_car.build_error_model(V_min)
+    my_sys = my_car.build_error_model(V_min,2,1)
+    my_sys_mod = copy.deepcopy(my_sys)
+    my_sys_mod.B = my_sys.B[:,0]
+    print(my_sys.B)
+    print(my_sys_mod.B)
     my_lqr = LQRDesign(my_car)
-    K_s = my_lqr.compute_single_gain_sample(V_min, my_sys).flat
+    K_s = my_lqr.compute_single_gain_sample(V_min, my_sys_mod).flat
     K_mat = my_lqr.compute_sim_gain_samples(my_car, Vx_vec)
     x_hat = np.array([[1.24059389],
                       [5.64647673],
@@ -108,6 +113,7 @@ def lqr_example():
     xy_hat[:] = 0
     K_mat_shape = K_mat.shape
     print(f"\nmy_sys: {my_sys}"
+          f"\n my_sys_mod: {my_sys_mod}"
           f"\nnum_states: {my_sys.A.shape[0]}"
           f"\nnum_inputs: {my_sys.B.shape[1]}"
           f"\nK_mat[0]: {K_mat.flat[0]}"
