@@ -20,10 +20,18 @@ class LQRDesign:
         # self.q2_range = [0.1, 0.3, 1.0]
         # self.q3_range = [10, 30.0, 100.0]
         # self.q4_range = [1.0, 3.0, 10.0]
+
+        # didnt crash, slight ossc
+        # self.q1_range = [20.0, 60.0, 200.0]
+        # self.q2_range = [0.1, 0.3, 1.0]
+        # self.q3_range = [0.1, 0.3, 1.0]
+        # self.q4_range = [0.1, 0.3, 1.0]
+        #
+        
         self.q1_range = [20.0, 60.0, 200.0]
         self.q2_range = [0.1, 0.3, 1.0]
         self.q3_range = [0.1, 0.3, 1.0]
-        self.q4_range = [0.1, 0.3, 1.0]
+        self.q4_range = [6.0, 28.0, 60.0]
         self.q1_coef = []
         self.q2_coef = []
         self.q3_coef = []
