@@ -36,7 +36,7 @@ PATH_TOPIC_NAME = '/path_curvature'
 class LqgController(Node):
     def __init__(self):
         super().__init__(NODE_NAME)
-        self.debug = False
+        self.debug = True
         self.debug_measurements = False
         self.frame_id = 'base_link'
         self.QUEUE_SIZE = 10
@@ -173,7 +173,7 @@ class LqgController(Node):
         self.lqr_calc = LQRDesign(self.car_model)
         self.kalman_calc = LinearKalmanFilter()
         self.ss_simulation = StateSpaceSimulation()
-        self.P = np.diag([1.0E-3, 0, 1.0E-3, 0])
+        self.P = np.diag([1.0E-2, 0, 1.0E-2, 0])
         self.Qo = np.diag([5.0E-3, 1.0E-2, 1.0E-6, 1.0E-6])
         self.Ro = np.diag([1.0E-3, 5.0E-2])
         self.Ro_inf = np.diag([np.inf, np.inf])
@@ -269,8 +269,7 @@ class LqgController(Node):
             # self.future_curvature_buffer = error_data.data[3]
         self.recieved_error_measurement = True
         
-        if self.debug:
-        # if self.debug_measurements:
+        if self.debug_measurements:
             self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer}")
             # self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer},{self.future_curvature_buffer}")
     
@@ -395,7 +394,12 @@ class LqgController(Node):
         self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, u, self.y_measure, self.P, self.Qo, self.Ro)
         
         if self.debug:
-            self.get_logger().info(f"Here 6 {self.state_est}")
+            self.get_logger().info(f"\n" 
+                                   f"\n Here 6: {self.recieved_error_measurement}"
+                                   f"\n Here 7: {self.state_est}"
+                                   f"\n Here 8: {Ro}"
+                                   f"\n"
+                                   )
             
         # if self.debug:
         #     self.get_logger().info(
@@ -436,12 +440,12 @@ class LqgController(Node):
         self.recieved_error_measurement = False
         self.get_latest_measurements()
         if self.debug:
-            self.get_logger().info(f"Here 7: {self.recieved_error_measurement}")
+            self.get_logger().info(f"Here 9: {self.recieved_error_measurement}")
 
         # write out
         self.compare_manual_and_lqr()
         if self.debug:
-            self.get_logger().info(f"Here 8")
+            self.get_logger().info(f"Here 10")
         
     def compare_manual_and_lqr(self):
         self.df = pd.concat([self.df, pd.DataFrame.from_records([{ \
