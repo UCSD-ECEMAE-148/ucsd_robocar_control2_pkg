@@ -69,6 +69,7 @@ class LqgController(Node):
         self.odom_thread = MutuallyExclusiveCallbackGroup()
         self.error_thread = MutuallyExclusiveCallbackGroup()
         self.joy_thread = MutuallyExclusiveCallbackGroup()
+        self.path_thread = MutuallyExclusiveCallbackGroup()
 
         # Actuator control
         self.drive_pub = self.create_publisher(AckermannDriveStamped, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
@@ -89,7 +90,7 @@ class LqgController(Node):
         self.error_subscriber
 
         # Get path measurements
-        self.path_subscriber = self.create_subscription(Float32MultiArray, PATH_TOPIC_NAME, self.set_path, self.QUEUE_SIZE, callback_group=self.joy_thread)
+        self.path_subscriber = self.create_subscription(Float32MultiArray, PATH_TOPIC_NAME, self.set_path, self.QUEUE_SIZE, callback_group=self.path_thread)
         self.path_subscriber
 
         # Get Joystick commands
@@ -259,7 +260,8 @@ class LqgController(Node):
             self.get_logger().info(f"Updating odom: {self.vx_vesc_buffer}")
 
     def error_measurement(self, error_data):
-        error_data_check = np.array([error_data.data[0], error_data.data[1], error_data.data[2], error_data.data[3]])
+        # error_data_check = np.array([error_data.data[0], error_data.data[1], error_data.data[2], error_data.data[3]])
+        error_data_check = np.array([error_data.data[0], error_data.data[1], error_data.data[2]])
         if not (np.isnan(error_data_check).any()):
             self.e_y_buffer = error_data.data[0]
             self.e_x_buffer = error_data.data[1]
@@ -269,7 +271,8 @@ class LqgController(Node):
         
         if self.debug:
         # if self.debug_measurements:
-            self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer},{self.future_curvature_buffer}")
+            self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer}")
+            # self.get_logger().info(f"Updating Error: {self.e_y_buffer}, {self.e_x_buffer},{self.e_theta_buffer},{self.future_curvature_buffer}")
     
     def set_path(self, path_data):
         self.future_curvature_buffer = path_data.data[0]
@@ -301,7 +304,7 @@ class LqgController(Node):
         self.e_x = self.e_x_buffer
         self.e_theta_m1 = self.e_theta
         self.e_theta = self.e_theta_buffer
-        self.future_curvature = self.future_curvature_buffer
+        # self.future_curvature = self.future_curvature_buffer
 
         # manual control
         self.joy_speed = self.joy_speed_buffer 
@@ -358,7 +361,6 @@ class LqgController(Node):
         
         if self.debug:
             self.get_logger().info(f"Here 3 {K}")
-            self.get_logger().info(f"Here 3.1 {K.flat[2]}")
 
         # Steering LQR
         ay = np.power(self.vx,2) * self.future_curvature
@@ -393,23 +395,26 @@ class LqgController(Node):
         self.state_est, self.P = self.kalman_calc.lkf(self.sys, self.state_est, u, self.y_measure, self.P, self.Qo, self.Ro)
         
         if self.debug:
-            self.get_logger().info(
-                f'\n e_cg: {self.state_measurement[0][0]}'
-                f'\n e_cg_dot: {self.state_measurement[1][0]}'
-                f'\n theta_e: {self.state_measurement[2][0]}'
-                f'\n theta_e_dot: {self.state_measurement[3][0]}'
-                f'\n yaw: {self.yaw}'
-                f'\n yaw_rate: {self.yaw_rate}'
-                f'\n vx: {self.vx}'
-                f'\n vy: {self.vy}'
-                f'\n joy_speed: {self.joy_speed}'
-                f'\n joy_steering: {self.joy_steering}'
-                f'\n y: {self.y_measure}'
-                f'\n state_est: {self.state_est}'
-                f'\n d_ff_1: {d_ff_1}'
-                f'\n d_ff_2: {d_ff_2}'
-                f'\n d_ff_3: {d_ff_3}'
-            )
+            self.get_logger().info(f"Here 6 {self.state_est}")
+            
+        # if self.debug:
+        #     self.get_logger().info(
+        #         f'\n e_cg: {self.state_measurement[0][0]}'
+        #         f'\n e_cg_dot: {self.state_measurement[1][0]}'
+        #         f'\n theta_e: {self.state_measurement[2][0]}'
+        #         f'\n theta_e_dot: {self.state_measurement[3][0]}'
+        #         f'\n yaw: {self.yaw}'
+        #         f'\n yaw_rate: {self.yaw_rate}'
+        #         f'\n vx: {self.vx}'
+        #         f'\n vy: {self.vy}'
+        #         f'\n joy_speed: {self.joy_speed}'
+        #         f'\n joy_steering: {self.joy_steering}'
+        #         f'\n y: {self.y_measure}'
+        #         f'\n state_est: {self.state_est}'
+        #         f'\n d_ff_1: {d_ff_1}'
+        #         f'\n d_ff_2: {d_ff_2}'
+        #         f'\n d_ff_3: {d_ff_3}'
+        #     )
 
         # Publish values
         try:
@@ -430,9 +435,13 @@ class LqgController(Node):
         # Get new sensor measurements
         self.recieved_error_measurement = False
         self.get_latest_measurements()
+        if self.debug:
+            self.get_logger().info(f"Here 7: {self.recieved_error_measurement}")
 
         # write out
         self.compare_manual_and_lqr()
+        if self.debug:
+            self.get_logger().info(f"Here 8")
         
     def compare_manual_and_lqr(self):
         self.df = pd.concat([self.df, pd.DataFrame.from_records([{ \
