@@ -22,15 +22,15 @@ import time
 import copy
 
 NODE_NAME = 'lqg_w_node'
-# ACTUATOR_TOPIC_NAME = '/teleop'
-ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+ACTUATOR_TOPIC_NAME = '/teleop'
+# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
-JOY_TOPIC_NAME = '/teleop'
+# JOY_TOPIC_NAME = '/teleop'
 PATH_TOPIC_NAME = '/path_curvature'
-# JOY_TOPIC_NAME = '/joyteleop'
+JOY_TOPIC_NAME = '/joyteleop'
 
 
 class LqgController(Node):
