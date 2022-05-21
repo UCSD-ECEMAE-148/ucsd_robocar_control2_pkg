@@ -378,7 +378,7 @@ class LqgController(Node):
         # normalized_delta = delta / self.delta_normalization
         # self.inf_throttle = self.min_speed - (self.min_speed - self.max_speed) / (1 - self.error_threshold)
         # speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(normalized_delta) + self.inf_throttle
-        speed_raw = 0.5
+        speed_raw = 1.0
         speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
 
         # Get Current Measurement
