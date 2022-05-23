@@ -48,7 +48,7 @@ class LinearKalmanFilter:
         A_t = A.transpose()
         C_t = C.transpose()
         num_states = A.shape[0]
-        print(f"sample size: {self.sample_size}")
+        # print(f"sample size: {self.sample_size}")
 
         for k in range(0, self.sample_size):
 
@@ -88,7 +88,7 @@ class LinearKalmanFilter:
                 # # filtered output
                 # self.yhat = np.dot(C, self.xhat)
                 if self.debug:
-                    # print(f"A: {A}")
+                    print(f"A: {A}")
                     # print(f"B: {B}")
                     # print(f"C: {C}")
                     # print(f"D: {D}")
