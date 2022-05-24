@@ -48,7 +48,7 @@ class LinearKalmanFilter:
         A_t = A.transpose()
         C_t = C.transpose()
         num_states = A.shape[0]
-        print(f"sample size: {self.sample_size}")
+        # print(f"sample size: {self.sample_size}")
 
         for k in range(0, self.sample_size):
 
@@ -62,10 +62,10 @@ class LinearKalmanFilter:
                 self.xhat = np.add(np.dot(A, self.xhat).reshape(num_states, 1),np.dot(B, u[:,[k]]))  # predicted state estimate
                 self.Pp = np.add(np.dot(np.dot(A, self.Pp), A_t), Qo)  # covariance
 
-                print(f"lkf step5: {np.dot(B, u[:,[k]])}")
-                print(f"lkf step6: {K}")
-                print(f"lkf step7: {y[:, k]}")
-                print(f"lkf step8: {np.dot(K, y[:, k])}")
+                # print(f"lkf step5: {np.dot(B, u[:,[k]])}")
+                # print(f"lkf step6: {K}")
+                # print(f"lkf step7: {y[:, k]}")
+                # print(f"lkf step8: {np.dot(K, y[:, k])}")
                 self.xhat = np.add(np.dot((np.subtract(A, np.dot(K, C))), self.xhat).reshape(num_states, 1), np.add(np.dot(B, u[:,[k]]), np.dot(K, y[:, [k]]).reshape(num_states, 1)))
                 self.Pp = np.subtract(self.Pp, np.dot(np.dot(np.dot(np.dot(self.Pp, C_t), np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))), C), self.Pp))
                 
@@ -88,7 +88,7 @@ class LinearKalmanFilter:
                 # # filtered output
                 # self.yhat = np.dot(C, self.xhat)
                 if self.debug:
-                    # print(f"A: {A}")
+                    print(f"A: {A}")
                     # print(f"B: {B}")
                     # print(f"C: {C}")
                     # print(f"D: {D}")
@@ -120,11 +120,11 @@ class LinearKalmanFilter:
                     # print(f"step2: {np.dot(np.dot(C, self.Pp), C_t)}")
                     # print(f"step3: {np.add(np.dot(np.dot(C, self.Pp), C_t), Ro)}")
                     # print(f"step4: {np.linalg.inv(np.add(np.dot(np.dot(C, self.Pp), C_t), Ro))}")
-                    # print(f"u[:,[k]]: {u[:,[k]]}")
-                    print(f"lkf step5: {np.dot(B, u[:,[k]])}")
-                    print(f"lkf step1 sim: {K}")
-                    print(f"lkf step2 sim: {y[:, [k]]}")
-                    print(f"lkf step3 sim: {np.dot(K, y[:, [k]])}")
+                    # # print(f"u[:,[k]]: {u[:,[k]]}")
+                    # print(f"lkf step5: {np.dot(B, u[:,[k]])}")
+                    # print(f"lkf step1 sim: {K}")
+                    # print(f"lkf step2 sim: {y[:, [k]]}")
+                    # print(f"lkf step3 sim: {np.dot(K, y[:, [k]])}")
             except np.linalg.LinAlgError:
                 print("Singluar Matrix Detected")
         return self.xhat, self.Pp
