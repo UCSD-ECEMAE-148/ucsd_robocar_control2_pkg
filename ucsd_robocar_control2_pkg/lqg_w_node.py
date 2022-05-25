@@ -22,8 +22,8 @@ import time
 import copy
 
 NODE_NAME = 'lqg_w_node'
-ACTUATOR_TOPIC_NAME = '/drive'
-# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+# ACTUATOR_TOPIC_NAME = '/drive'
+ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
@@ -274,7 +274,6 @@ class LqgController(Node):
     
     def set_path(self, path_data):
         self.future_curvature_buffer = path_data.data[0]
-        self.vx_path_buffer = path_data.data[1]
 
     def set_joy_command(self, joy_data):
         self.joy_speed_buffer = joy_data.drive.speed
