@@ -15,28 +15,29 @@ class LQRDesign:
         self.Ts = self.sysd.dt
         self.Q = np.identity(1, dtype=float)
         self.R = np.identity(1, dtype=float)
-        self.Vx_range = [0.1, 0.5, 5.0]
         # self.q1_range = [0.1, 0.3, 1.0]
         # self.q2_range = [0.1, 0.3, 1.0]
         # self.q3_range = [10, 30.0, 100.0]
         # self.q4_range = [1.0, 3.0, 10.0]
 
         # didnt crash, slight ossc
+        # self.Vx_range = [0.1, 0.5, 5.0]
         # self.q1_range = [20.0, 60.0, 200.0]
         # self.q2_range = [0.1, 0.3, 1.0]
         # self.q3_range = [0.1, 0.3, 1.0]
         # self.q4_range = [0.1, 0.3, 1.0]
         #
         
-        self.q1_range = [20.0, 60.0, 200.0]
+        self.Vx_range = [0.5, 1.5, 5.0]
+        self.q1_range = [8.0, 24.0, 80.0]
         self.q2_range = [0.1, 0.3, 1.0]
         self.q3_range = [0.1, 0.3, 1.0]
-        self.q4_range = [6.0, 28.0, 60.0]
+        self.q4_range = [10.0, 30.0, 100.0]
         self.q1_coef = []
         self.q2_coef = []
         self.q3_coef = []
         self.q4_coef = []
-        self.r1 = 1.0E-1
+        self.r1 = 1.0E-2
         self.compute_weight_functions()
         
     def compute_weight_functions(self):
