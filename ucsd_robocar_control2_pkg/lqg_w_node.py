@@ -375,15 +375,23 @@ class LqgController(Node):
             self.get_logger().info(f"Here 5 {self.state_est}")
         # Throttle gain scheduling
         # normalized_delta = delta / self.delta_normalization
-        max_heading_error = (math.pi/4)
-        Kspeed = 0.8
-        normalized_delta = self.state_est[2][0] / max_heading_error
-        self.inf_throttle = (self.min_speed - (self.min_speed - self.max_speed) / ((math.pi/2) - self.heading_error_threshold)) * (max_heading_error)
+        max_heading_error = 0.4
+        Kspeed = 1.0
+        normalized_delta = self.state_est[2][0]
+        self.inf_throttle = (self.min_speed - (self.min_speed - self.max_speed) / (max_heading_error - self.heading_error_threshold)) * (max_heading_error)
         speed_raw = ((self.min_speed - self.max_speed) / (max_heading_error - self.heading_error_threshold)) * abs(normalized_delta) + self.inf_throttle
-        speed_raw = Kspeed * speed_raw
+        speed_raw = abs(Kspeed * speed_raw)
         # speed_raw = 2.0
-        speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
-
+        # speed = abs(self.clamp(speed_raw, self.max_speed, self.min_speed))
+        speed = abs(self.clamp(speed_raw, self.min_speed, self.max_speed))
+        self.get_logger().info(f"\n"
+                               f"\n Heading error: {self.state_est[2][0]}"
+                               f"\n normalized heading error: {normalized_delta}"
+                               f"\n normalized heading error: {normalized_delta}"
+                               f"\n speed_raw: {speed_raw}"
+                               f"\n speed: {speed}"
+                               )
+        # speed = 1.0
         # Get Current Measurement
         self.y_measure = self.car_model.calc_output(self.state_measurement)
         
