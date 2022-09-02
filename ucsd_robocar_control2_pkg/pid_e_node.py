@@ -125,7 +125,7 @@ class PidController(Node):
         delta_raw = self.proportional_error + self.derivative_error + self.integral_error
 
         # Throttle gain scheduling (function of lateral error)
-        self.inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (1 - self.error_threshold)
+        self.inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (1 - self.error_threshold))
         speed_raw = ((self.min_speed - self.max_speed) / (1 - self.error_threshold)) * abs(self.e_y) + self.inf_throttle
 
         # clamp values
