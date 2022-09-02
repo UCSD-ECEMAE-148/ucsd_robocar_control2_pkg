@@ -7,9 +7,7 @@ pid_e_node:
     integral_max: 1.0E-1
     zero_speed  : 0.0
     max_speed : 0.5 
-    min_speed : 0.4
+    min_speed : 0.4 
     max_right_steering : 0.4 
     max_left_steering : -0.4
     Ts : 0.05
-
-
