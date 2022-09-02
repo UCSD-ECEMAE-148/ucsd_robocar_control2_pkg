@@ -7,7 +7,7 @@ import math
 import os
 import numpy as np
 
-NODE_NAME = 'pid_node'
+NODE_NAME = 'pid_llh_node'
 ERROR_TOPIC_NAME = '/error'
 ACTUATOR_TOPIC_NAME = '/teleop'
 

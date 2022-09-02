@@ -12,8 +12,8 @@ import yaml
 
 def generate_launch_description():
     node_package = 'ucsd_robocar_control2_pkg'
-    config_file = 'pid_config.yaml'
-    node_name = 'pid_node'
+    config_file = 'pid_llh_node.yaml'
+    node_name = 'pid_llh_node'
 
     ld = LaunchDescription()
 
