@@ -30,7 +30,7 @@ class PidController(Node):
         self.drive_cmd = AckermannDriveStamped()
 
         # Error subscriber
-        self.error_subscriber = self.create_subscription(Float32MultiArray, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE, callback_group=self.error_thread)
+        self.error_subscriber = self.create_subscription(Float32, ERROR_TOPIC_NAME, self.error_measurement, self.QUEUE_SIZE, callback_group=self.error_thread)
         self.error_subscriber
 
         # Custom subscriber
