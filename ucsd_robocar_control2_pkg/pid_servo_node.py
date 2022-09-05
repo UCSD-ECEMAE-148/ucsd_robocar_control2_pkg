@@ -112,7 +112,7 @@ class PidController(Node):
         self.integral_error = self.clamp(self.integral_error, self.integral_max)
         delta_normal = self.proportional_error + self.derivative_error + self.integral_error
 
-        # Steering map from [-1,1] --> [0, 180] : [max_left,max_right] # to do: implement into calibration
+        # Steering map from [-1,1] --> [0, 180] : [max_left,max_right]
         delta_degree = float(self.remap(delta_normal))
         
         self.get_logger().info(f'\n'   
@@ -122,8 +122,7 @@ class PidController(Node):
         self.e_y_1 = self.e_y
 
         try:
-            # publish drive control signal
-            # publish error data
+            # publish servo control signal
             self.servo_angle.data = float(delta_degree)
             self.servo_angle_publisher.publish(self.servo_angle)
 
