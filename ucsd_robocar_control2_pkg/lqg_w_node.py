@@ -22,8 +22,8 @@ import time
 import copy
 
 NODE_NAME = 'lqg_w_node'
-# ACTUATOR_TOPIC_NAME = '/drive'
-ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
+ACTUATOR_TOPIC_NAME = '/drive'
+# ACTUATOR_TOPIC_NAME = '/lqg_controller_test'
 IMU_TOPIC_NAME = '/imu_topic'
 ODOM_TOPIC_NAME = '/odom'
 ERROR_TOPIC_NAME = '/error'
@@ -390,7 +390,7 @@ class LqgController(Node):
                                f"\n speed_raw: {speed_raw}"
                                f"\n speed: {speed}"
                                )
-        # speed = 1.0
+        speed = 1.0
         # Get Current Measurement
         self.y_measure = self.car_model.calc_output(self.state_measurement)
         
