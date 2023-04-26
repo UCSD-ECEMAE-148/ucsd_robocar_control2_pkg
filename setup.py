@@ -33,15 +33,12 @@ setup(
             'lqg_node = ucsd_robocar_control2_pkg.lqg_node:main',
             'lqg_w_node = ucsd_robocar_control2_pkg.lqg_w_node:main',
             'mpc_node = ucsd_robocar_control2_pkg.mpc_node:main',
-<<<<<<< HEAD
             'pid_node = ucsd_robocar_control2_pkg.pid_node:main',
             'pid_gps_node = ucsd_robocar_control2_pkg.pid_gps_node:main',
-            'pid_gps_calibration_node = ucsd_robocar_control2_pkg.pid_gps_calibration_node:main'
-=======
+            'pid_gps_calibration_node = ucsd_robocar_control2_pkg.pid_gps_calibration_node:main',
             'pid_e_node = ucsd_robocar_control2_pkg.pid_e_node:main',
             'pid_llh_node = ucsd_robocar_control2_pkg.pid_llh_node:main',
             'pid_servo_node = ucsd_robocar_control2_pkg.pid_servo_node:main'
->>>>>>> 0ec60305cdda38b3745b89e70913f8e7f1cb764c
         ],
     },
 )
