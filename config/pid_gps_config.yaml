@@ -1,19 +1,19 @@
 pid_gps_node: 
   ros__parameters: 
-    Kp_lat : 0.1 
+    Kp_lat : 0.18
     Ki_lat : 0.0 
-    Kd_lat : 0.01 
-    Kp_head : 0.01 
+    Kd_lat : 1.4
+    Kp_head : 0.0
     Ki_head : 0.0 
-    Kd_head : 0.02 
+    Kd_head : 0.0
     integral_max : 0.0 
     zero_speed : 0.0 
-    max_speed : 2.0 
+    max_speed : 1.0 
     min_speed : 0.5 
     heading_upper_error_threshold : 0.25 
     heading_lower_error_threshold : 0.1 
-    long_upper_error_threshold : 3.0 
-    long_lower_error_threshold : 0.1 
+    long_upper_error_threshold : 0.5 
+    long_lower_error_threshold : 0.05 
     max_right_steering : 0.4 
     max_left_steering : -0.4 
     Ts : 0.05 

@@ -61,9 +61,14 @@ class PidController(Node):
                 ('zero_speed', 0.0),
                 ('max_speed', 5.0),
                 ('min_speed', 0.1),
-                ('max_right_steering', 0.4),
-                ('max_left_steering', -0.4),
-                ('Ts', 0.05)
+                ('max_right_steering', -0.4),
+                ('max_left_steering', 0.4),
+                ('Ts', 0.1),
+                ('delta_rate_max', 0.015),
+                ('speed_rate_max', 0.1),
+                ('pid_calibration_config_location', '/test.yaml'),
+                ('pid_config_location', '/test.yaml'),
+                ('show_logger', 0)
             ])
         
         self.Kp_lat = self.get_parameter('Kp_lateral').value
@@ -85,7 +90,10 @@ class PidController(Node):
         self.max_right_steering = self.get_parameter('max_right_steering').value  # negative(max_left) 
         self.max_left_steering = self.get_parameter('max_left_steering').value  # between abs([0,0.436332]) radians (0-25degrees)
         self.Ts = self.get_parameter('Ts').value # controller sample time
-
+        self.delta_rate_max = self.get_parameter('delta_rate_max').value # max change in steering angle /second (rad/s)
+        self.speed_rate_max = self.get_parameter('speed_rate_max').value # max change in speed (m/s)
+        self.show_logger = self.get_parameter('show_logger').value # controller sample time
+        
         # initializing PID control
         self.e_y_buffer = 0
         self.e_x_buffer = 0
@@ -102,6 +110,10 @@ class PidController(Node):
         self.derivative_error_y = 0 # derivative error term for steering
         self.integral_error_lat = 0 # integral error term for steering
         self.integral_error_head = 0
+
+        self.delta_prev = 0
+        self.speed_prev = 0
+        # self.delta_rate_max = math.radians(1)
         
         self.get_logger().info(
             f'\n Kp_lat: {self.Kp_lat}'
@@ -120,6 +132,8 @@ class PidController(Node):
             f'\n max_right_steering: {self.max_right_steering}'
             f'\n max_left_steering: {self.max_left_steering}'
             f'\n Ts: {self.Ts}'
+            f'\n delta_rate_max: {self.delta_rate_max}'
+            f'\n speed_rate_max: {self.speed_rate_max}'
         )
         # Call controller
         self.create_timer(self.Ts, self.controller)
@@ -127,14 +141,14 @@ class PidController(Node):
     def error_measurement(self, error_data):
         error_data_check = np.array([error_data.data[0], error_data.data[1], error_data.data[2], error_data.data[3]])
         if not (np.isnan(error_data_check).any()):
-            self.e_y_buffer = error_data.data[0]
-            self.e_x_buffer = error_data.data[1]
+            self.e_x_buffer = error_data.data[0]
+            self.e_y_buffer = error_data.data[1]
             self.e_theta_buffer = error_data.data[2]
             self.path_complete_percent_buffer = error_data.data[3]
 
     def get_latest_measurements(self):
-        self.e_y = self.e_y_buffer
         self.e_x = self.e_x_buffer
+        self.e_y = self.e_y_buffer
         self.e_theta = self.e_theta_buffer
         self.path_complete_percent = self.path_complete_percent_buffer
         self.current_time = self.get_clock().now().to_msg()
@@ -144,6 +158,9 @@ class PidController(Node):
         self.Kp_head = self.get_parameter('Kp_heading').value
         self.Ki_head = self.get_parameter('Ki_heading').value
         self.Kd_head = self.get_parameter('Kd_heading').value
+        self.integral_max = self.get_parameter('integral_max').value
+        self.delta_rate_max = self.get_parameter('delta_rate_max').value
+        self.speed_rate_max = self.get_parameter('speed_rate_max').value
 
     def calculate_pid(self, kp, ki, kd, error_current, error_previous, integral_error):
         proportional_error = kp * error_current
@@ -154,9 +171,10 @@ class PidController(Node):
         return control_raw, integral_error
     
     def calculate_error_map(self, error, limit_upper, limit_lower):
-        inf_throttle = self.min_speed - ((self.min_speed - self.max_speed) / (limit_upper - limit_lower)) * limit_upper
-        error_map_speed = ((self.min_speed - self.max_speed) / (limit_upper - limit_lower)) * abs(error) + inf_throttle
-        return error_map_speed
+        b = self.min_speed - ((self.min_speed - self.max_speed) / (limit_upper - limit_lower)) * limit_upper
+        m = ((self.min_speed - self.max_speed) / (limit_upper - limit_lower))
+        y = m * abs(error) + b
+        return y
 
     def controller(self):
         # Get latest measurement
@@ -168,60 +186,61 @@ class PidController(Node):
         delta_raw = control_error_lat + control_error_head
 
         # Throttle gain scheduling (function of error)
-        speed_raw_heading = self.calculate_error_map(self.e_theta, self.heading_upper_error_threshold, self.heading_lower_error_threshold)
-        speed_raw_long = self.calculate_error_map(self.e_x, self.long_upper_error_threshold, self.long_lower_error_threshold)
+        speed_raw = self.calculate_error_map(self.e_y, self.long_upper_error_threshold, self.long_lower_error_threshold)
 
-        # clamp values
-        delta = self.clamp(delta_raw, self.max_right_steering, self.max_left_steering)
-        # speed = self.clamp(speed_raw, self.max_speed, self.min_speed)
-        speed = 1.0
+        # constrain limits
+        delta_limit_clamp = self.clamp(delta_raw, self.max_left_steering, self.max_right_steering)
+        speed_limit_clamp = self.clamp(speed_raw, self.max_speed, self.min_speed)
+
+        # constrain rates
+        delta_rate_clamp = self.steer_rate_clamp(delta_limit_clamp)
+        speed_rate_clamp = self.speed_rate_clamp(speed_limit_clamp)
+
+        delta = delta_limit_clamp
+        speed = speed_rate_clamp
         
-        self.get_logger().info(
-            f'\n'
-            f'\n errors:'
-            f'\n     ex (lon): {self.e_x}'
-            f'\n     ey (lat): {self.e_y}'
-            f'\n     e_theta (heading): {self.e_theta}'
-            f'\n raw:'
-            f'\n     speed_raw_heading (m/s): {speed_raw_heading}'
-            f'\n     speed_raw_long (m/s): {speed_raw_long}'
-            f'\n     delta_raw (rad): {delta_raw}'
-            f'\n clamped:'
-            f'\n     clamped speed (m/s): {speed}'
-            f'\n     clamped delta (rad): {delta}'
-            )
+        if self.show_logger:
+            self.get_logger().info(
+                f'\n'
+                f'\n errors:'
+                f'\n     ex (lon): {self.e_x}'
+                f'\n     ey (lat): {self.e_y}'
+                f'\n     e_theta (degrees): {math.degrees(self.e_theta)}'
+                f'\n raw:'
+                f'\n     speed_raw (m/s): {speed_raw}'
+                f'\n     delta_raw (degrees): {math.degrees(delta_raw)}'
+                f'\n limits clamped:'
+                f'\n     speed_limit_clamp (m/s): {speed_limit_clamp}'
+                f'\n     delta_limit_clamp (degrees): {math.degrees(delta_limit_clamp)}'
+                f'\n rates clamped:'
+                f'\n     delta_rate_clamp (degrees): {math.degrees(delta_rate_clamp)}'
+                f'\n     speed_rate_clamp (m/s): {speed_rate_clamp}'
+                f'\n published:'
+                f'\n     delta (degrees): {math.degrees(delta)}'
+                f'\n     speed (m/s): {speed}'
+                )
         
         self.e_y_1 = self.e_y
         self.e_theta_1 = self.e_theta
+        self.delta_prev = delta
+        self.speed_prev = speed
 
         if self.path_complete_percent < 100.0:
             # Publish values
             try:
                 # publish drive control signal
-                # self.drive_cmd.header.stamp = self.current_time
-                # self.drive_cmd.header.frame_id = self.frame_id
-                # self.drive_cmd.twist.linear.x = speed   
-                # self.drive_cmd.twist.angular.z = -delta         
                 self.drive_cmd.linear.x = speed   
-                self.drive_cmd.angular.z = -delta       
+                self.drive_cmd.angular.z = delta       
                 self.drive_pub.publish(self.drive_cmd)
 
             except KeyboardInterrupt:
-                # self.drive_cmd.header.stamp = self.current_time
-                # self.drive_cmd.header.frame_id = self.frame_id
-                # self.drive_cmd.twist.linear.x = 0
-                # self.drive_cmd.twist.angular.z = 0
                 self.drive_cmd.linear.x = 0
                 self.drive_cmd.angular.z = 0
                 self.drive_pub.publish(self.drive_cmd)
         else:
             # publish drive control signal
-            # self.drive_cmd.header.stamp = self.current_time
-            # self.drive_cmd.header.frame_id = self.frame_id
-            # self.drive_cmd.drive.twist.linear.x = 0.0
-            # self.drive_cmd.drive.twist.angular.z = 0.0
-            self.drive_cmd.drive.linear.x = 0.0
-            self.drive_cmd.drive.angular.z = 0.0
+            self.drive_cmd.linear.x = 0.0
+            self.drive_cmd.angular.z = 0.0
             self.drive_pub.publish(self.drive_cmd)
 
     def clamp(self, value, upper_bound, lower_bound=None):
@@ -235,10 +254,36 @@ class PidController(Node):
             value_c = value
         return value_c 
 
+    def steer_rate_clamp(self, current_delta):
+        delta_change = current_delta - self.delta_prev
+        if abs(delta_change) > (self.delta_rate_max * self.Ts):
+            delta_clamp = self.delta_prev + np.sign(delta_change) * self.delta_rate_max * self.Ts
+        else:
+            delta_clamp = current_delta
+        return delta_clamp
+
+    def speed_rate_clamp(self, current_speed):
+        speed_change = current_speed - self.speed_prev
+        if abs(speed_change) > (self.speed_rate_max * self.Ts):
+            speed_clamp = min(current_speed, self.speed_prev +  np.sign(speed_change) * self.speed_rate_max * self.Ts)
+        else:
+            speed_clamp = current_speed
+        return speed_clamp
+
 
 def main(args=None):
     rclpy.init(args=args)
     pid_publisher = PidController()
+    steer_right_range_deg = f"(0:-{round(math.degrees(0.8),2)}]"
+    steer_left_range_deg = f"(0:{round(math.degrees(1.5),2)}]"
+    var_info = [
+            ("Steering Ranges (degrees):", " "),
+            ("    Turn RIGHT (-):", steer_right_range_deg),
+            ("    Turn LEFT (+):", steer_left_range_deg),
+            ("Error Meaninings (m):", " "),
+            ("    Lateral ey (-):", "Path is to the RIGHT"),
+            ("    Lateral ey (+):", "Path is to the LEFT")
+        ]
     try:
         executor = MultiThreadedExecutor(num_threads=3)
         executor.add_node(pid_publisher)
@@ -246,10 +291,6 @@ def main(args=None):
             executor.spin()
         finally:
             pid_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
-            # pid_publisher.drive_cmd.header.stamp = pid_publisher.current_time
-            # pid_publisher.drive_cmd.header.frame_id = pid_publisher.frame_id
-            # pid_publisher.drive_cmd.twist.linear.x = 0.0
-            # pid_publisher.drive_cmd.twist.angular.z = 0.0
             pid_publisher.drive_cmd.linear.x = 0.0
             pid_publisher.drive_cmd.angular.z = 0.0
             pid_publisher.drive_pub.publish(pid_publisher.drive_cmd)
