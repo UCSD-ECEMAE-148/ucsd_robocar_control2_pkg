@@ -200,7 +200,7 @@ class PidController(Node):
         delta_rate_clamp = self.steer_rate_clamp(delta_limit_clamp)
         speed_rate_clamp = self.speed_rate_clamp(speed_limit_clamp)
 
-        delta = -delta_limit_clamp
+        delta = delta_limit_clamp
         speed = speed_rate_clamp
         
         if self.show_logger:
@@ -235,7 +235,7 @@ class PidController(Node):
                 # publish drive control signal
                 self.drive_cmd.header.stamp = self.current_time
                 self.drive_cmd.header.frame_id = self.frame_id
-                self.drive_cmd.drive.speed = speed
+                self.drive_cmd.drive.speed = -speed
                 self.drive_cmd.drive.steering_angle = delta
                 self.drive_pub.publish(self.drive_cmd)
 
@@ -301,9 +301,9 @@ def main(args=None):
             executor.spin()
         finally:
             pid_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
-            pid_publisher.drive_cmd.linear.x = 0.0
-            pid_publisher.drive_cmd.angular.z = 0.0
-            pid_publisher.drive_pub.publish(pid_publisher.drive_cmd)
+            # pid_publisher.drive_cmd.linear.x = 0.0
+            # pid_publisher.drive_cmd.angular.z = 0.0
+            # pid_publisher.drive_pub.publish(pid_publisher.drive_cmd)
 
             pid_publisher.drive_cmd.header.stamp = pid_publisher.current_time
             pid_publisher.drive_cmd.header.frame_id = pid_publisher.frame_id
