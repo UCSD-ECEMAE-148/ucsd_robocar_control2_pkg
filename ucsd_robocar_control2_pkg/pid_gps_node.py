@@ -6,6 +6,7 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from std_msgs.msg import Float32MultiArray
 from geometry_msgs.msg import TwistStamped, Twist
+from ackermann_msgs.msg import AckermannDriveStamped
 import time
 import math
 import os
@@ -13,7 +14,7 @@ import numpy as np
 
 NODE_NAME = 'pid_gps_node'
 ERROR_TOPIC_NAME = '/error'
-ACTUATOR_TOPIC_NAME = '/cmd_vel'
+ACTUATOR_TOPIC_NAME = '/drive'
 
 
 class PidController(Node):
@@ -27,8 +28,11 @@ class PidController(Node):
         # Actuator control
         # self.drive_pub = self.create_publisher(TwistStamped, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
         # self.drive_cmd = TwistStamped()
-        self.drive_pub = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
-        self.drive_cmd = Twist()
+        # self.drive_pub = self.create_publisher(Twist, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
+        # self.drive_cmd = Twist()
+
+        self.drive_pub = self.create_publisher(AckermannDriveStamped, ACTUATOR_TOPIC_NAME, self.QUEUE_SIZE)
+        self.drive_cmd = AckermannDriveStamped()
 
         # Error subscriber
         self.error_subscriber = self.create_subscription(
@@ -68,7 +72,7 @@ class PidController(Node):
                 ('speed_rate_max', 0.1),
                 ('pid_calibration_config_location', '/test.yaml'),
                 ('pid_config_location', '/test.yaml'),
-                ('show_logger', 0)
+                ('show_logger', 1)
             ])
         
         self.Kp_lat = self.get_parameter('Kp_lateral').value
@@ -196,7 +200,7 @@ class PidController(Node):
         delta_rate_clamp = self.steer_rate_clamp(delta_limit_clamp)
         speed_rate_clamp = self.speed_rate_clamp(speed_limit_clamp)
 
-        delta = delta_limit_clamp
+        delta = -delta_limit_clamp
         speed = speed_rate_clamp
         
         if self.show_logger:
@@ -229,18 +233,24 @@ class PidController(Node):
             # Publish values
             try:
                 # publish drive control signal
-                self.drive_cmd.linear.x = speed   
-                self.drive_cmd.angular.z = delta       
+                self.drive_cmd.header.stamp = self.current_time
+                self.drive_cmd.header.frame_id = self.frame_id
+                self.drive_cmd.drive.speed = speed
+                self.drive_cmd.drive.steering_angle = delta
                 self.drive_pub.publish(self.drive_cmd)
 
             except KeyboardInterrupt:
-                self.drive_cmd.linear.x = 0
-                self.drive_cmd.angular.z = 0
+                self.drive_cmd.header.stamp = self.current_time
+                self.drive_cmd.header.frame_id = self.frame_id
+                self.drive_cmd.drive.speed = 0.0
+                self.drive_cmd.drive.steering_angle = 0.0
                 self.drive_pub.publish(self.drive_cmd)
         else:
             # publish drive control signal
-            self.drive_cmd.linear.x = 0.0
-            self.drive_cmd.angular.z = 0.0
+            self.drive_cmd.header.stamp = self.current_time
+            self.drive_cmd.header.frame_id = self.frame_id
+            self.drive_cmd.drive.speed = 0.0
+            self.drive_cmd.drive.steering_angle = 0.0
             self.drive_pub.publish(self.drive_cmd)
 
     def clamp(self, value, upper_bound, lower_bound=None):
@@ -293,6 +303,12 @@ def main(args=None):
             pid_publisher.get_logger().info(f'Shutting down {NODE_NAME}...')
             pid_publisher.drive_cmd.linear.x = 0.0
             pid_publisher.drive_cmd.angular.z = 0.0
+            pid_publisher.drive_pub.publish(pid_publisher.drive_cmd)
+
+            pid_publisher.drive_cmd.header.stamp = pid_publisher.current_time
+            pid_publisher.drive_cmd.header.frame_id = pid_publisher.frame_id
+            pid_publisher.drive_cmd.drive.speed = 0.0
+            pid_publisher.drive_cmd.drive.steering_angle = 0.0
             pid_publisher.drive_pub.publish(pid_publisher.drive_cmd)
             time.sleep(1)
             executor.shutdown()
